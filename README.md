@@ -2,7 +2,26 @@
 
 Skills for Claude / ChatGPT and other models.
 
-Each skill lives in its own directory with a `SKILL.md` describing when and how it applies.
+Each skill lives under `skills/<name>/SKILL.md`, describing when and how it applies.
+
+## Install
+
+Install into your project (or a global agent config) with the [`skills`](https://github.com/vercel-labs/skills) package manager — no clone needed:
+
+```bash
+# into the current project's .claude/skills/
+npx skills@latest add zhanyinx/skills
+
+# or globally, into your user-level agent config
+npx skills@latest add zhanyinx/skills --global
+```
+
+Or add it as an auto-updating Claude Code plugin marketplace:
+
+```
+/plugin marketplace add zhanyinx/skills
+/plugin install zhanyinx-skills@zhanyinx
+```
 
 ## Skills
 

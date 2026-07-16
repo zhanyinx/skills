@@ -1,0 +1,22 @@
+{
+  "name": "zhanyinx",
+  "owner": {
+    "name": "Yinxiu Zhan"
+  },
+  "description": "Yinxiu Zhan's skills for planning and writing academic papers, as an installable Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "zhanyinx-skills",
+      "source": "./",
+      "description": "Skills for academic writing — wayfinding a paper as a map of tickets, drafting sections, and reviewing drafts for fidelity and craft.",
+      "category": "writing",
+      "keywords": [
+        "writing",
+        "skills",
+        "academic",
+        "paper",
+        "wayfinder"
+      ]
+    }
+  ]
+}
