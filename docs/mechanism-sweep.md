@@ -72,7 +72,7 @@ find.
 | the callback names the proposition, never the container | judgement, with the same stated test as the drafting rule, plus the closed bullet set asserted by `test_skill_contract.py` |
 | renumbers nothing, checks no heading, creates no annotation | **unexpressible** — all of it happens in the render, on every pass |
 | deletion is the only closure; no change log | **deletion** — the step that maintained one is gone, and `RESOLVED` appears nowhere. Both asserted |
-| reads only `terms` from `## Style` | **test** — no other style key is named in this file |
+| reads only `terms` from `## Style` | **test** — every one of the six keys is checked for where it is named: `terms` in this file and the schema's owner, every other key in the owner alone |
 
 ### `review-paper`
 
@@ -113,7 +113,7 @@ is the abolished `CLEAN` verdict, asserted over all five files.
 
 ## 2. What the sweep changed
 
-One finding, and it is the reason the sweep is part of the ticket rather than a nicety.
+Two findings, and they are the reason the sweep is part of the ticket rather than a nicety.
 
 **The transform ban is stated three times, and only two of the three were guarded.**
 `write-paper` states it twice — once in step 5 as a construction rule binding the sentence being
@@ -122,11 +122,20 @@ it a third time, binding the fixes a reviewer recommends. The spec fixes all thr
 a duplication to remove; it is three copies of one fact that can drift. The cross-file pair was
 already asserted equal. The pair inside `write-paper` was not, and now is.
 
+**`HOLE / SLOT / SILENT` is one vocabulary, and two files name fewer than three.** A file that
+names two of the three leaves a session to guess what the third does. `review-paper` names `SILENT`
+alone and `wayfinder` names none — both correct, and for a stated reason: `SILENT` is the only class
+a review may create, so naming the others would describe an authority it does not have, and
+`wayfinder` plans without ever touching a source. That reasoning was nowhere, so the exemption was
+indistinguishable from an omission. It is now asserted as an exemption — the two names, the one
+class, and the boundary sentence that licenses it — the same shape the *slot* exemption already
+had.
+
 ---
 
 ## 3. Residue — rules with no mechanism, and why each stays
 
-Four. Each is recorded rather than deleted, and the reason is given, because an undocumented
+Six. Each is recorded rather than deleted, and the reason is given, because an undocumented
 acceptance is how the em-dash bullet survived six reviews.
 
 **`write-paper`: "No sentence grades its own importance."** The one construction rule with no
@@ -148,6 +157,25 @@ Both govern narration and session conduct rather than an artifact, so no mechani
 there is nothing on disk to check. Both predate this rework and neither is touched by it.
 **Accepted, and out of scope for this effort.**
 
+**The *overlap check* is named by one skill, not two.** The settled vocabulary fixes *overlap
+check* as the brief-to-prose near-verbatim lint, and `render-paper` names it verbatim as the unit
+that runs it. `write-paper` refers to the same thing as *the overlap*, which is not the settled
+term — but what `write-paper` invokes is the **reported row**, whose name is `brief-to-prose
+overlap`, and it points at the row rather than at the lint. **Accepted: the check asserts the term
+of the unit that owns it, and this note records that the drafting skill names the row's function
+instead.** Tightening the sentence would be an edit to settled text for no defect.
+
+**The *slot* qualification lives in a glossary, not at first use.** The vocabulary rule asks for
+the sense to be qualified *on first use in any passage where both could apply*. `write-paper` does
+exactly that — its boundaries bullet says `SLOT` there is the annotation sense and not a position
+in the heading tree, in the one passage that names both in a breath, and that is asserted.
+`assemble-paper` and `render-paper` instead carry a `## Vocabulary` entry at the foot of the file,
+which is a glossary rather than a first use. The check asserts the entry names both senses and
+which is which, scoped to the entry rather than to the file — the loose version passed for the
+wrong reason, satisfied by `write-paper`'s unrelated `## Style`-key collision. **Accepted: a
+glossary qualifies every use rather than the first, which is weaker in placement and stronger in
+coverage.**
+
 **`wayfinder` uses *slot* in a third sense.** The settled vocabulary names two — a section position
 in the heading tree, and `SLOT:` in an annotation brace marking a venue back-matter field — and
 requires any passage where both could apply to say which is meant. `wayfinder` carries no
@@ -168,6 +196,18 @@ question to ask of any new one is the question at the top: *what happens if a se
 If the answer is "nothing", the rule is not finished.
 
 The contract check's own assertions were verified to bite by reintroducing each defect it names —
-29 mutations across the five files, every one caught. Two holes surfaced that way and were closed:
-a literal restored across a line break, and a literal restored capitalised at the head of a
-sentence. Both had passed a naive `in` check.
+38 mutations across the five files, every one caught. Four holes surfaced that way and were closed,
+and every one of them was an assertion that passed while looking at the wrong text:
+
+- a literal restored **across a line break**, which `in` does not see;
+- a literal restored **capitalised** at the head of a sentence, which a case-sensitive `in` does
+  not see either — and every one of the four deletions is a bullet fragment, so a sentence head is
+  exactly where it would come back;
+- a `CLEAN` **emitted in a table cell next to an unrelated denial**, excused by a discriminator
+  that measured proximity where it needed grammar;
+- the *slot* qualification checked as **three loose substrings anywhere in the file**, satisfied in
+  `write-paper` by the unrelated `## Style`-key collision rather than by the slot note at all.
+
+The last one is the same defect this repo already found once, in the helper that reads a shipped
+section: an assertion about the wrong span, still passing. That is the failure mode to test for
+first when adding to this module.

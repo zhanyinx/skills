@@ -16,10 +16,12 @@ drift apart are asserted equal rather than described as equal in prose.
 
 Three properties make this different from grepping the files by hand.
 
-**Literals are matched with whitespace collapsed.** A phrase re-introduced with
-a line break in the middle of it is the same phrase to a reader and a different
-string to `in`. Every literal assertion below runs on collapsed text, so
-re-wrapping cannot hide a restoration.
+**Literals are matched with whitespace collapsed and case folded.** A phrase
+re-introduced with a line break in the middle of it, or capitalised at the head
+of a sentence, is the same phrase to a reader and a different string to `in`.
+Every literal assertion below goes through `carries`, so neither re-wrapping nor
+re-capitalising can hide a restoration. Both holes were found by mutation, and
+both had passed.
 
 **A closed set beats an absence.** Where the spec retired some bullets from a
 list and kept others, the assertion is over the whole list rather than over the
@@ -46,7 +48,7 @@ module could not be asked to check.
 import re
 from pathlib import Path
 
-from shipped_text import section_of, without_fences
+from shipped_text import STYLE_KEYS, collapsed, section_of, without_fences
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS = REPO_ROOT / "skills"
@@ -59,31 +61,43 @@ UNITS = ("wayfinder", "write-paper", "assemble-paper", "review-paper", "render-p
 # closed set names its members.
 BULLET_LABEL = re.compile(r"^- \*\*(.+?)\*\*", re.MULTILINE)
 
-# The `## Style` keys, whose one home is `write-paper`'s `STYLE-STANZA.md`. A
-# filled one in a `SKILL.md` is a shipped house style; `test_style_stanza.py`
-# guards the asset, this module guards all five skill files.
+# The headings of the sections asserted against more than once. Named because
+# they are long enough to wrap, and a heading transcribed twice is two chances
+# to transcribe it wrongly — `section_of` refuses an unknown heading, so the
+# second copy would fail loudly rather than silently, but it would still fail
+# for the wrong reason.
+CONSTRUCTION_RULES = (
+    "### 5. Construction rules — these hold while you write the sentence, not after"
+)
+CRAFT_INVARIANTS = "## Craft invariants"
+TIER_TWO_RESTATED = "#### The Tier 2 invariants"
+
+# The start of the next entry in a `## Vocabulary` section: an italic term
+# followed by an em dash. The em dash is what makes it a headword — these
+# glossaries also italicise the odd gloss mid-definition (`*venue back-matter
+# field*`), and a pattern matching bare italics would cut an entry in half at
+# the very phrase the entry exists to state.
+ENTRY_HEADWORD = re.compile(r"\*[^*]+\* —")
+
+# A filled `## Style` key in a `SKILL.md` is a shipped house style.
+# `test_style_stanza.py` guards the asset; this module guards all five skill
+# files. The key set is imported rather than transcribed: its one home is
+# `write-paper`'s `STYLE-STANZA.md`, and a fourth copy here would be the
+# one-fact-two-homes defect these tests exist to close.
 FILLED_KEY = re.compile(
-    r"^\s*-\s+(active-we|plain-words|build-in-steps|spelling-variant"
-    r"|em-dash-threshold|terms):[ \t]*(\S.*)$",
+    r"^\s*-\s+(%s):[ \t]*(\S.*)$" % "|".join(STYLE_KEYS),
     re.MULTILINE,
 )
+
+# `terms` is the one key a second skill may name: `assemble-paper` reads it for
+# the term-drift bullet, and its boundaries say so. Every other key belongs to
+# the skill that ships the schema and nowhere else.
+SHARED_KEY = "terms"
 
 
 def shipped(unit):
     """One shipped `SKILL.md`, verbatim."""
     return (SKILLS / unit / "SKILL.md").read_text()
-
-
-def collapsed(text):
-    """The text as one line, every run of whitespace collapsed to one space.
-
-    Every literal assertion in this module goes through here. A deleted phrase
-    re-introduced across a line break is the same sentence to a reader, and
-    `"number it consistently with what already exists" in text` is False the
-    moment the line wraps between two of those words — so a check that skipped
-    this step would pass on a file that had put the mandate back.
-    """
-    return re.sub(r"\s+", " ", text)
 
 
 def carries(unit, literal):
@@ -153,10 +167,16 @@ def sentences(lines):
 
 
 # A statement that denies the token rather than handing it out. `no`, `not`,
-# `never` and `abolish` are the four ways the five files say it, and the
-# negation has to reach the token: a row that emitted `CLEAN` while mentioning
-# some unrelated "not" elsewhere in the row would otherwise pass.
-DENIAL = re.compile(r"\b(?:no|not|never|abolish\w*)\b[^.]{0,80}?CLEAN")
+# `never` and `abolish` are the four ways the five files say it, and the denial
+# has to *govern* the token, which here means sit immediately before it —
+# `no `CLEAN` verdict`, `abolished CLEAN`. Only quoting punctuation may
+# intervene.
+#
+# Proximity alone is not enough, and this is the second hole mutation found in
+# this module. A window of a few words admits `| not applicable | CLEAN |`,
+# where the negation belongs to a different cell entirely and the row still
+# hands the verdict out.
+DENIAL = re.compile(r"\b(?:no|not|never|abolish\w*)\s+[`\"'*(]*CLEAN")
 
 
 def emits_as_verdict(statement):
@@ -176,12 +196,28 @@ def bullet_labels(text, heading):
     Fence-aware through `section_of`, so a template a skill ships for copying
     cannot be mistaken for the section itself.
     """
-    return [label for label in BULLET_LABEL.findall(section_of(text, heading))]
+    return BULLET_LABEL.findall(section_of(text, heading))
 
 
 def steps(text):
     """The numbered process steps a skill declares, by name."""
     return re.findall(r"^### (\d+)\. (.+)$", without_fences(text), re.MULTILINE)
+
+
+def rules_in(unit, heading):
+    """One section of a shipped skill, collapsed and ready to assert against."""
+    return collapsed(section_of(shipped(unit), heading))
+
+
+def both_tier_two_copies():
+    """The Tier 2 invariant list as each of its two owners states it.
+
+    They travel together in every assertion about them, because the property
+    under test is never one copy's content — it is that the two agree.
+    """
+    return rules_in("write-paper", CRAFT_INVARIANTS), rules_in(
+        "review-paper", TIER_TWO_RESTATED
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -224,12 +260,22 @@ class TestEmitsAsVerdict:
     def test_a_sentence_abolishing_the_token_does_not(self):
         assert not emits_as_verdict("There is no `CLEAN` verdict to record.")
 
-    def test_the_denial_has_to_reach_the_token(self):
+    def test_a_denial_after_the_token_does_not_excuse_it(self):
         """A row that hands out the verdict is not excused by carrying the word
         `not` somewhere else in the row."""
         assert emits_as_verdict(
             "| CLEAN | every check passed, and the gate did not refuse |"
         )
+
+    def test_a_denial_before_the_token_in_another_cell_does_not_excuse_it(self):
+        """The hole mutation found. Proximity reads this as a denial; grammar
+        does not, because the negation belongs to the neighbouring cell."""
+        assert emits_as_verdict("| not applicable | CLEAN |")
+
+    def test_the_denial_may_be_separated_only_by_quoting(self):
+        """Every real occurrence writes the token in backticks."""
+        assert not emits_as_verdict("There is no `CLEAN` verdict at all.")
+        assert not emits_as_verdict('There is no "CLEAN" verdict at all.')
 
     def test_abolished_counts_as_a_denial(self):
         assert not emits_as_verdict("`G6` abolished CLEAN for the gate.")
@@ -335,11 +381,8 @@ class TestTheReplacementsLandedInTheSameFile:
     worse than the exemplar was."""
 
     def test_the_gate_bit_hole_form_replaces_the_bracketed_literal(self):
-        citations = collapsed(
-            section_of(
-                shipped("write-paper"),
-                "### 3. Handle citations as you draft — never fabricate one",
-            )
+        citations = rules_in(
+            "write-paper", "### 3. Handle citations as you draft — never fabricate one"
         )
 
         assert "{{ ! <what the claim requires> }}" in citations
@@ -348,11 +391,9 @@ class TestTheReplacementsLandedInTheSameFile:
         """The replacement is not silence about numbering: the step says where
         numbers do exist, and names the positional forms that are parse
         errors."""
-        by_name = collapsed(
-            section_of(
-                shipped("write-paper"),
-                "### 4. Reference figures, panels and citations by name — never by number",
-            )
+        by_name = rules_in(
+            "write-paper",
+            "### 4. Reference figures, panels and citations by name — never by number",
         )
 
         assert "stable name" in by_name
@@ -362,13 +403,7 @@ class TestTheReplacementsLandedInTheSameFile:
         assert "parse error" in by_name
 
     def test_the_positive_scope_construction_replaces_the_negated_frame(self):
-        rules = collapsed(
-            section_of(
-                shipped("write-paper"),
-                "### 5. Construction rules — these hold while you write the sentence, "
-                "not after",
-            )
-        )
+        rules = rules_in("write-paper", CONSTRUCTION_RULES)
 
         assert (
             "A framing constraint is obeyed by not invoking the frame, never by denying it"
@@ -380,13 +415,7 @@ class TestTheReplacementsLandedInTheSameFile:
         the pair — the sentence that honours the constraint, and beside it the
         denial that does not — because denial was the only construction the
         drafter previously had."""
-        rules = collapsed(
-            section_of(
-                shipped("write-paper"),
-                "### 5. Construction rules — these hold while you write the sentence, "
-                "not after",
-            )
-        )
+        rules = rules_in("write-paper", CONSTRUCTION_RULES)
         bullet = rules[rules.index("A framing constraint is obeyed") :]
 
         assert "chosen to span the immune-content range" in bullet
@@ -555,7 +584,7 @@ class TestTheRetiredBulletsAreGone:
     def test_the_skill_says_the_render_owns_what_the_steps_stopped_doing(self):
         """The step went away and the duty did not evaporate — the boundary
         says where it went, which is what keeps a session from re-deriving it."""
-        boundaries = collapsed(section_of(shipped("assemble-paper"), "## Boundaries"))
+        boundaries = rules_in("assemble-paper", "## Boundaries")
 
         assert "Renumbers nothing, and checks no heading" in boundaries
 
@@ -593,6 +622,12 @@ class TestTheSettledVocabularyIsUsedVerbatim:
         "originating": ("write-paper", "render-paper"),
         "non-originating": ("write-paper", "render-paper"),
         "the gate bit": ("write-paper", "review-paper", "render-paper"),
+        # The lint's settled name, obliged only of the unit that runs it.
+        # `write-paper` invokes the reported row, whose name is
+        # `brief-to-prose overlap`, and refers to it by that function — which
+        # the sweep records rather than the check forcing the lint's name into
+        # a file that never runs it.
+        "overlap check": ("render-paper",),
     }
 
     # The definition of `unit` is the one sentence three separate `##
@@ -612,12 +647,38 @@ class TestTheSettledVocabularyIsUsedVerbatim:
 
         assert missing == set()
 
-    def test_the_three_render_behaviours_are_named_together(self):
-        """`HOLE / SLOT / SILENT` is one vocabulary, and a file naming two of
-        the three has a gap rather than a shorthand."""
-        for unit in ("write-paper", "assemble-paper", "render-paper"):
-            text = shipped(unit)
-            assert {"HOLE", "SLOT", "SILENT"} <= set(re.findall(r"\b[A-Z]{4,6}\b", text)), unit
+    # The three render behaviours. Every unit that touches the annotation
+    # channel at all names all three, because naming two of them is a gap
+    # rather than a shorthand — a session told about `HOLE` and `SILENT` has to
+    # guess what the third does.
+    BEHAVIOURS = ("HOLE", "SLOT", "SILENT")
+    TOUCHES_THE_CHANNEL = ("write-paper", "assemble-paper", "render-paper")
+
+    def test_every_unit_that_touches_the_channel_names_all_three(self):
+        missing = {
+            (unit, behaviour)
+            for unit in self.TOUCHES_THE_CHANNEL
+            for behaviour in self.BEHAVIOURS
+            if behaviour not in shipped(unit)
+        }
+
+        assert missing == set()
+
+    def test_the_two_that_name_fewer_are_the_two_with_no_channel_authority(self):
+        """Stated rather than skipped, the same way the slot exemption is.
+        `review-paper` names `SILENT` alone because SILENT is the only class it
+        may create — naming the other two would describe an authority it does
+        not have. `wayfinder` names none: it plans, and never touches a source.
+        If either ever gains channel authority, the test above starts applying
+        and this one says why it did not before."""
+        partial = {
+            unit: [b for b in self.BEHAVIOURS if b in shipped(unit)]
+            for unit in UNITS
+            if unit not in self.TOUCHES_THE_CHANNEL
+        }
+
+        assert partial == {"review-paper": ["SILENT"], "wayfinder": []}
+        assert "SILENT annotations only" in collapsed(shipped("review-paper"))
 
     def test_the_unit_definition_does_not_drift_between_vocabularies(self):
         """Three files define it. One sentence, three copies — which is the
@@ -666,17 +727,62 @@ class TestTheSlotCollisionIsQualified:
         text = shipped(unit)
         return "SLOT:" in text and re.search(r"\bslots?\b", text)
 
+    def qualification_in(self, unit):
+        """The `*slot*` vocabulary entry, or None if the file has no glossary.
+
+        Scoped to the entry rather than to the whole file. Three loose
+        substrings anywhere in the file is how this check first passed for the
+        wrong reason: `write-paper` says *collision* twice about the unrelated
+        `## Style` key clash, so the word was already there and the assertion
+        never looked at the slot note at all.
+
+        The entry rather than the sentence, because `render-paper` states the
+        two senses in two sentences and one entry — and an entry is what a
+        reader looking the word up actually reads."""
+        if "## Vocabulary" not in without_fences(shipped(unit)):
+            return None
+        vocabulary = rules_in(unit, "## Vocabulary")
+        start = vocabulary.find("*slot*")
+        if start < 0:
+            return None
+        rest = vocabulary[start + len("*slot*") :]
+        following = ENTRY_HEADWORD.search(rest)
+        return rest[: following.start()] if following else rest
+
     def test_every_unit_carrying_both_senses_qualifies_the_collision(self):
         """Mechanically decidable, which is the only reason this is a check and
         not a sweep note: a file carrying `SLOT:` at all is a file where the
         collision can bite."""
+        unqualified = [
+            unit
+            for unit in UNITS
+            if self.carries_both_senses(unit) and not self.qualification_in(unit)
+        ]
+
+        assert unqualified == []
+
+    def test_the_qualification_names_both_senses_and_which_is_which(self):
+        """Naming both is not enough — the entry has to say which is which, or
+        a reader has two definitions and no mapping between them."""
         for unit in UNITS:
             if not self.carries_both_senses(unit):
                 continue
-            text = collapsed(shipped(unit))
-            assert "collision" in text, unit
-            assert "venue back-matter field" in text, unit
-            assert "heading tree" in text, unit
+            entry = self.qualification_in(unit)
+            assert "heading tree" in entry, unit
+            assert "collision" in entry, unit
+            assert "venue back-matter field" in entry, unit
+            assert "`SLOT:`" in entry, unit
+
+    def test_the_one_passage_using_both_in_one_breath_qualifies_locally(self):
+        """`write-paper` is the only file that names the annotation classes and
+        the heading tree in the same bullet, which is the passage §2.3's
+        first-use rule is actually about. The other two rely on their
+        `## Vocabulary` entry, which is a glossary rather than a first use —
+        recorded in the sweep rather than asserted away."""
+        boundaries = rules_in("write-paper", "## Boundaries")
+
+        assert "`SLOT` here is the annotation sense" in boundaries
+        assert "not a position in the heading tree" in boundaries
 
     def test_the_units_that_cannot_be_bitten_are_the_two_without_annotations(self):
         """Stated rather than skipped. `review-paper` and `wayfinder` use only
@@ -714,10 +820,7 @@ class TestTheTierTwoInvariantsHaveOneSet:
     PLANNING_ONLY = "partitions by an object or a procedure, never by a claim"
 
     def test_both_owners_carry_every_shared_invariant(self):
-        owned = collapsed(section_of(shipped("write-paper"), "## Craft invariants"))
-        restated = collapsed(
-            section_of(shipped("review-paper"), "#### The Tier 2 invariants")
-        )
+        owned, restated = both_tier_two_copies()
 
         missing = {
             (invariant, where)
@@ -732,17 +835,14 @@ class TestTheTierTwoInvariantsHaveOneSet:
         """The set equality, which is the actual drift guard: a sixth invariant
         added to one copy fails here even though every existing assertion still
         passes."""
-        owned = bullet_labels(shipped("write-paper"), "## Craft invariants")
-        restated = bullet_labels(shipped("review-paper"), "#### The Tier 2 invariants")
+        owned = bullet_labels(shipped("write-paper"), CRAFT_INVARIANTS)
+        restated = bullet_labels(shipped("review-paper"), TIER_TWO_RESTATED)
 
         assert len(restated) == len(self.SHARED)
         assert len(owned) == len(self.SHARED) + 1
 
     def test_the_one_asymmetry_is_the_planning_time_invariant(self):
-        owned = collapsed(section_of(shipped("write-paper"), "## Craft invariants"))
-        restated = collapsed(
-            section_of(shipped("review-paper"), "#### The Tier 2 invariants")
-        )
+        owned, restated = both_tier_two_copies()
 
         assert self.PLANNING_ONLY in owned
         assert self.PLANNING_ONLY not in restated
@@ -751,7 +851,7 @@ class TestTheTierTwoInvariantsHaveOneSet:
         """What makes it an asymmetry rather than a gap. Without the clause
         naming planning time, the missing review-facing copy reads as an
         omission and the next edit adds it."""
-        owned = collapsed(section_of(shipped("write-paper"), "## Craft invariants"))
+        owned, _ = both_tier_two_copies()
         clause = owned[owned.index(self.PLANNING_ONLY) :]
 
         assert "binds at planning time" in clause
@@ -779,12 +879,10 @@ class TestTheTierTwoInvariantsHaveOneSet:
         """The property that made them Tier 2. A copy that lost it would let a
         `## Style` key switch off an invariant, which is the configuration
         failure the tier split exists to prevent."""
-        assert "not overridable by `## Style`" in collapsed(
-            section_of(shipped("write-paper"), "## Craft invariants")
-        )
-        assert "Not overridable" in collapsed(
-            section_of(shipped("review-paper"), "#### The Tier 2 invariants")
-        )
+        owned, restated = both_tier_two_copies()
+
+        assert "not overridable by `## Style`" in owned
+        assert "Not overridable" in restated
 
 
 class TestTheRulesWayfinderRestates:
@@ -841,12 +939,17 @@ class TestNoHouseStyleShipsInAnySkillFile:
 
     def test_the_key_set_has_exactly_one_home(self):
         """`write-paper` names the closed set because it ships the schema. No
-        other skill file may, or the set has two copies that can disagree."""
+        other skill file may, or the set has two copies that can disagree.
+
+        Every key is checked, not a sample of them: a leak of one key is the
+        same defect as a leak of three, and a sample says nothing about the
+        keys it left out."""
         naming = {
-            unit
-            for unit in UNITS
-            for key in ("active-we", "plain-words", "spelling-variant")
-            if "`%s`" % key in shipped(unit)
+            key: {unit for unit in UNITS if "`%s`" % key in shipped(unit)}
+            for key in STYLE_KEYS
         }
 
-        assert naming == {"write-paper"}
+        assert naming[SHARED_KEY] == {"write-paper", "assemble-paper"}
+        for key in STYLE_KEYS:
+            if key != SHARED_KEY:
+                assert naming[key] == {"write-paper"}, key
