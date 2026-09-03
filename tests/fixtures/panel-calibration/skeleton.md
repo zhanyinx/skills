@@ -17,4 +17,10 @@
 | methods-imaging | 3 | Imaging | procedure |
 | methods-registration | 3 | Registration | procedure |
 | results | 2 | Results and discussion | |
-| back-matter | 2 | Data availability | |
+
+## Roster
+
+| kind | name | legend |
+|---|---|---|
+| figure | pipeline | legends/pipeline.md |
+| figure | registration-accuracy | legends/registration-accuracy.md |

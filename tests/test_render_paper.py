@@ -101,14 +101,14 @@ class TestHardErrorTier:
         result = render("duplicate-slot", "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert rows_of(result.report)["slot integrity"].startswith("FAIL")
+        assert rows_of(result.report)["slot / roster integrity"].startswith("FAIL")
         assert "anchored twice" in result.report
 
     def test_an_anchor_naming_no_skeleton_slot_is_a_hard_error(self, render):
         result = render("orphan-slot", "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert rows_of(result.report)["slot integrity"].startswith("FAIL")
+        assert rows_of(result.report)["slot / roster integrity"].startswith("FAIL")
         assert "absent from the skeleton" in result.report
 
     def test_an_originating_slot_bearing_children_is_a_hard_error(self, render):
@@ -195,9 +195,9 @@ class TestSectionGranularity:
 
         rows = rows_of(result.report)
 
-        assert "slot integrity" in rows
-        assert rows["slot integrity"] != PASS
-        assert rows["slot integrity"] == SKIPPED
+        assert "slot / roster integrity" in rows
+        assert rows["slot / roster integrity"] != PASS
+        assert rows["slot / roster integrity"] == SKIPPED
 
     def test_the_section_table_is_verbatim(self, render, golden):
         result = render("clean", "MANUSCRIPT.working.md", "--check", "--section", "methods")
@@ -397,11 +397,11 @@ class TestTheSkeletonFormat:
         assert "skips a level" in result.report
 
     def test_a_roster_carries_names_only(self, paper, run_in):
-        where = paper("clean")
+        where = paper("figures")
         skeleton = where / "skeleton.md"
         skeleton.write_text(
             skeleton.read_text().replace(
-                "| figure | registration-accuracy |", "| panel | registration-accuracy-b |"
+                "| figure | registration-accuracy |", "| panel | dapi-overlay |"
             )
         )
 
@@ -602,9 +602,9 @@ class TestNoProseIsEverDroppedSilently:
     def test_a_slot_anchored_twice_keeps_both_blocks_at_section_granularity(
         self, render
     ):
-        # At section granularity `slot integrity` is out of scope, so nothing
-        # can report the duplicate — which is exactly why the render must not
-        # quietly pick one of the two blocks and drop the other.
+        # At section granularity `slot / roster integrity` is out of scope, so
+        # nothing can report the duplicate — which is exactly why the render
+        # must not quietly pick one of the two blocks and drop the other.
         result = render(
             "duplicate-slot", "MANUSCRIPT.working.md", "--circulate", "--section", "abstract"
         )
@@ -843,16 +843,18 @@ class TestTheReportedTier:
         )
 
     def test_an_abbreviation_does_not_end_a_sentence(self, paper, run_in):
-        # `Fig. 2` is mid-sentence; `no.` is a word a sentence can end on, and
-        # merging two sentences would corrupt every number measured over them.
+        # `approx. 2` is mid-sentence; `no.` is a word a sentence can end on,
+        # and merging two sentences would corrupt every number measured over
+        # them. The probe used to be `Fig. 2`, which is now a reference literal
+        # and cannot be written in reader-facing prose at all.
         where = paper("clean")
         source = where / "MANUSCRIPT.working.md"
         source.write_text(
             source.read_text().replace(
                 "We register cyclic imaging panels across rounds and report the accuracy "
                 "of that registration.",
-                "Drift is visible in Fig. 2 of the earlier report. Whether it was ever "
-                "corrected: no. We report the accuracy of the registration.",
+                "Drift is visible at approx. 2 microns in the earlier report. Whether it "
+                "was ever corrected: no. We report the accuracy of the registration.",
             )
         )
 
