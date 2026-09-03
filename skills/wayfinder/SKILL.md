@@ -10,7 +10,7 @@ The destination varies per effort, and naming it is the first act of charting �
 
 ## Plan, don't do
 
-Wayfinder is **planning** by default: each ticket resolves a decision, and the map is done when the way is clear — nothing left to decide before someone goes and does the thing. The pull to just do the work is usually the signal you've reached the edge of the map and it's time to hand off. An effort can override this in its **Notes** — carrying execution into the map itself — e.g. a manuscript-drafting effort using `draft` tickets. Absent that override, produce decisions, not deliverables.
+Wayfinder is **planning** by default: each ticket resolves a decision, and the map is done when the way is clear — nothing left to decide before someone goes and does the thing. The pull to just do the work is usually the signal you've reached the edge of the map and it's time to hand off. An effort can override this in its **Notes** — carrying execution into the map itself — e.g. a manuscript-drafting effort using `draft` and `revise` tickets. Absent that override, produce decisions, not deliverables.
 
 ## Refer by name
 
@@ -68,7 +68,7 @@ Each ticket is a **child issue** of the map; the tracker's issue id is its ident
 <the decision or investigation this ticket resolves>
 ```
 
-Each ticket carries a `wayfinder:<type>` label — one of `research`, `prototype`, `grilling`, `task` (see [Ticket Types](#ticket-types)).
+Each ticket carries a `wayfinder:<type>` label — one of `research`, `prototype`, `grilling`, `task`, `draft`, `revise` (see [Ticket Types](#ticket-types)).
 
 A session **claims** a ticket by assigning it to the dev driving the map, **first**, before any work, so concurrent sessions skip it. That assignee _is_ the claim: an open, unassigned ticket is unclaimed.
 
@@ -84,9 +84,45 @@ Every ticket is either **HITL** — human in the loop, worked *with* a human who
 - **Prototype** (HITL): Raise the fidelity of the discussion by making a cheap, rough, concrete artifact to react to — an outline, a rough take, a stub, or UI/logic code via the /prototype skill. Links the prototype as an asset. Use when "how should it look" or "how should it behave" is the key question.
 - **Grilling** (HITL): Conversation via the /grilling and /domain-modeling skills, one question at a time. The default case.
 - **Task** (HITL or AFK): Manual work that must happen before a *decision* can be made — nothing to decide, prototype, or research, but the discussion is blocked until it's done. Signing up for a service so its API can be judged, provisioning access, moving data so its shape can be seen. This is the one type that *does* rather than decides — and it earns its place by unblocking a decision, not by delivering the destination. The agent drives it alone where it can (AFK); otherwise it hands the human a precise checklist (HITL). Resolved when the work is done; the answer records what was done and any resulting facts (credentials location, new URLs, row counts) later tickets depend on.
-- **Draft** (HITL, checkpointed): Produces prose — a section or paragraph-cluster of the piece — via the `/write-paper` skill, sized to one seam as `/write-paper` itself defines it. Valid only when this effort's Notes declare execution in scope (see "Plan, don't do"). The ticket isn't closed on prose alone: run `/review-paper` at the checkpoint first, and only record the ticket resolved once that pass is clean or its findings are addressed. The resolution comment links the drafted text and the review's one-line verdict — not the prose itself, per the map's asset-linking convention. Like any ticket, a `draft` ticket can be blocked by open `task` tickets — e.g. a fact to confirm against code or an external party — that must resolve before the section can be drafted faithfully.
+- **Draft** (HITL, checkpointed): Produces prose — one **unit** of the piece, where a unit is one top-level skeleton slot and its subtree, 1:1 with its rung, its brief and its word budget — via the `/write-paper` skill. Valid only when this effort's Notes declare execution in scope (see "Plan, don't do").
 
-**Whole-piece review.** A `draft` effort should include one `task`-labeled ticket, blocked on every `draft` ticket closing, that runs `/assemble-paper` to stitch the sections into one manuscript, then `/review-paper` over the assembled whole rather than a single section — cross-references and cross-section contradictions are a different question than any one section's local check, and only surface once everything is in place.
+  Its checkpoint is a **render plus a review**, not prose alone: render the unit with `/render-paper` at `--section` granularity, then run `/review-paper` over **the render, not the annotated source**.
+
+  The ticket closes when the gate reports **zero FAILs** and every judgement finding is either **fixed**, **written back as a `!` annotation**, or **explicitly dispositioned with a reason**. **Silence is not a disposition.** There is no `CLEAN` verdict to record.
+
+  The resolution records the drafted file, the gate's per-check table, and **the commit ref the prose closed at** — a later `revise` reconstructs that render from the ref.
+
+  Like any ticket, a `draft` ticket can be blocked by open `task` tickets — a fact to confirm against code or an external party — that must resolve before the unit can be drafted faithfully. A load-bearing gap found *while* drafting does **not** hold the ticket open: it is written back as a `!` annotation and re-homed as its own `task` ticket blocking the whole-piece ticket.
+- **Revise** (HITL, checkpointed): Re-drafts a unit whose `draft` ticket is **already closed**. Behind the same execution-in-scope gate as `draft`. A **new child issue**; the superseded `draft` ticket **stays closed, permanently** — reopening it would re-block every ticket downstream of it and make the frontier a function of history rather than of state, and this skill's out-of-scope rule leans on a closed ticket being unambiguously off the frontier.
+
+  **The discriminator is mechanical: is the unit's `draft` ticket already closed?** A dirty per-section checkpoint is **not** a trigger — that happens while the ticket is still open, and its cure is more work inside that same open ticket. And `revise` is for changes to **prose**: a mechanical source-representation change with a **checkable invariant** — every unit's per-sentence set of cited sources unchanged, say — is a `task`, because a revision costs a full unit review and an invariant a machine can check costs nothing.
+
+  **Four triggers**, each filed by the session that caused it:
+
+  1. a **ladder amendment** — a `task` ticket amended a rung this unit was drafted against, and that ticket files it;
+  2. a **skeleton amendment** — an escalated structural change under the locality test, filed by the ticket that escalated it;
+  3. a **whole-piece chain-walk break** — every unit passed its own checkpoint and the document-absolute walk found a debt opened and never closed, or closed and never opened; the whole-piece ticket files one per unit it implicates;
+  4. a **migration** — prose drafted under an older contract being brought onto the current one, filed by the effort running the migration.
+
+  **Body:**
+
+  ```markdown
+  ## Revise
+
+  **Supersedes:** <the closed draft ticket, by name and link> @ <commit ref>
+  **Trigger:** <which of the four, naming the amending ticket>
+  **Scope:** <what the trigger changed — the amended rung, the moved slot, the broken debt>
+  ```
+
+  **There is no field listing what must not change.** A keep-list is the shape the evidence already rejected: give a drafter a list of items and it drops some silently, and the agent that drops a claim is the same agent that would omit it from the list. The drop-guard is instead **mechanical** — a supersession diff against the old render, which `/render-paper` reconstructs from the recorded commit ref (`--supersedes`), reported as a **finding, never a gate**.
+
+  **Its checkpoint is a strict superset of `draft`'s** — the full render, the full review, plus the supersession diff. **Never narrowed to the touched region.** Untouched prose passed against the **superseded** rung; if the trigger was a ladder amendment, the unit's obligations have moved, and prose that was correct under the old rung may be wrong under the new one without a single word of it changing.
+
+  **Propagation:** whoever changes a rung **or its drafted actual** immediately runs the chain walk **over the downstream subgraph only**. Units whose inherited debt still closes are left alone; units where it no longer closes get their own `revise`. Direction is strictly downstream. The whole-piece chain walk remains the final backstop.
+
+  **A `revise` may not be satisfied by an unconditional transform.** A migration is not filed as a sweep; it is per-unit, relation-first work.
+
+**Whole-piece review.** A `draft` effort should include one `task`-labeled ticket, blocked on every `draft` ticket closing, that runs `/assemble-paper` — promotion plus the one editorial pass, once and irreversibly — then `/render-paper`, then `/review-paper` over the assembled whole rather than a single unit. Cross-references and cross-section contradictions are a different question than any one unit's local check, and only surface once everything is in place — this is the pass where the whole-document checks are **in scope** rather than printing `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`. It is also where a `task` ticket re-homing a load-bearing gap belongs, blocking this ticket rather than the `draft` ticket that found it.
 
 ## Fog of war
 
