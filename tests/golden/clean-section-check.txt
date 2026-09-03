@@ -1,0 +1,9 @@
+  skeleton / spine grammar  PASS
+  source grammar            PASS
+  slot integrity            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  unit / rung pairing       PASS
+  originating slot children PASS
+  unfilled skeleton slot    PASS
+
+  5 pass, 0 fail, 1 out of scope
+  → NOT a claim that this section is finished
