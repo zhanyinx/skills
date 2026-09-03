@@ -4,6 +4,8 @@
   unit / rung pairing       PASS
   originating slot children PASS
   unfilled skeleton slot    FAIL — 1 (`results`)
+  brief-to-prose overlap    0 flagged, 0 expected — no brief for `abstract`, `results`
+  paragraphs (originating)  no originating unit in scope
 
-  5 pass, 1 fail, 0 out of scope
+  5 pass, 1 fail, 0 out of scope, 2 reported
   → NOT a claim that this document is finished

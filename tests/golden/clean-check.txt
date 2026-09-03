@@ -4,6 +4,8 @@
   unit / rung pairing       PASS
   originating slot children PASS
   unfilled skeleton slot    PASS
+  brief-to-prose overlap    0 flagged, 3 expected
+  paragraphs (originating)  single-sentence 1 (introduction ¶1); brief-order 1 of 1 (introduction)
 
-  6 pass, 0 fail, 0 out of scope
+  6 pass, 0 fail, 0 out of scope, 2 reported
   → NOT a claim that this document is finished

@@ -1,0 +1,11 @@
+  skeleton / spine grammar  PASS
+  source grammar            PASS
+  slot integrity            PASS
+  unit / rung pairing       PASS
+  originating slot children PASS
+  unfilled skeleton slot    PASS
+  brief-to-prose overlap    4 flagged, 1 expected — results: "registration accuracy is credible on a metric valis doe…"; results: "imaging-derived immune quantification tracks two orthog…"; results: "illumination correction suppresses tile-boundary seams"; availability: "the container image is freely available under the mit l…"
+  paragraphs (originating)  single-sentence 1 (results ¶2); brief-order 3 of 3 (results)
+
+  6 pass, 0 fail, 0 out of scope, 2 reported
+  → NOT a claim that this document is finished

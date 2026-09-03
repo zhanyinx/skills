@@ -8,6 +8,15 @@ PASS = "PASS"
 SKIPPED = "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
 
 
+def _rows(report):
+    """The verdict table as `name -> what the row says`."""
+    return dict(
+        (line[:27].strip(), line[27:].strip())
+        for line in report.splitlines()
+        if line.startswith("  ") and line[2:3] != " "
+    )
+
+
 class TestCheckMode:
     def test_clean_paper_passes_every_check_and_exits_zero(self, render, golden):
         result = render("clean", "MANUSCRIPT.working.md", "--check")
@@ -913,3 +922,247 @@ class TestScaffoldRefusals:
         assert result.exit_code == 2
         assert "--section <unit>" in result.report
         assert not (where / "methods.md").exists()
+
+
+class TestTheReportedTier:
+    """A reported row carries a prose fact. It has no verdict to give and no
+    threshold behind it, so it can never fail and never reaches the exit
+    code."""
+
+    def test_a_reported_row_carries_numbers_and_not_a_verdict(self, render, golden):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+
+        assert result.report == golden("brief-mirror-check.txt")
+        assert "brief-to-prose overlap    4 flagged, 1 expected" in result.report
+
+    def test_no_reported_row_changes_the_exit_code(self, render):
+        # The fixture's every paragraph is transcribed from its brief and its
+        # order mirrors the brief item for item. Nothing about that is a gate.
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "FAIL" not in result.report
+
+    def test_a_reported_row_never_gates_submission(self, render):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--submit")
+
+        assert result.exit_code == 0
+        assert result.document.startswith("---\ngenerated-by: render-paper")
+        assert "refused" not in result.report
+
+    def test_a_reported_row_is_neither_a_pass_nor_a_fail_in_the_counts(
+        self, render
+    ):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+
+        assert "6 pass, 0 fail, 0 out of scope, 2 reported" in result.report
+
+    def test_no_row_of_this_tier_names_a_threshold_or_a_verdict(self, render):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+
+        rows = _rows(result.report)
+
+        for name in ("brief-to-prose overlap", "paragraphs (originating)"):
+            assert "threshold" not in rows[name]
+            assert PASS not in rows[name]
+            assert "FAIL" not in rows[name]
+
+
+class TestTheOverlapInstrument:
+    """The instrument that catches prose mirroring its own brief. The zone the
+    shared span came from decides which instrument applies to it."""
+
+    def test_a_phrase_shared_with_the_argument_zone_is_flagged(self, render):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+
+        assert 'results: "registration accuracy is credible on a metric' in result.report
+
+    def test_the_brief_is_a_declared_input_at_the_paper_root(self, paper, run_in):
+        where = paper("brief-mirror")
+        (where / "briefs" / "results.md").unlink()
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "no brief for `results`" in result.report
+
+    def test_an_absent_brief_is_said_rather_than_counted_as_nothing(self, render):
+        result = render("unfilled-slot", "MANUSCRIPT.working.md", "--check")
+
+        assert "no brief for `abstract`, `results`" in result.report
+
+    def test_a_zone_this_parser_does_not_know_is_reported_not_raised(
+        self, paper, run_in
+    ):
+        where = paper("brief-mirror")
+        brief = where / "briefs" / "results.md"
+        brief.write_text(brief.read_text().replace("## Argument", "## Propositions"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "unparsed zone `## Propositions`" in result.report
+
+    def test_a_brief_with_no_reader_facing_zone_is_reported_too(self, paper, run_in):
+        where = paper("brief-mirror")
+        brief = where / "briefs" / "availability.md"
+        brief.write_text(brief.read_text().replace("## Inventory", "## Sheds"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "no `## Argument` or `## Inventory` zone" in result.report
+
+    def test_only_a_reader_facing_zone_is_measured(self, paper, run_in):
+        # `## Must not claim` is an instruction, and an instruction reaching
+        # the prose verbatim is a different defect with a different owner.
+        where = paper("brief-mirror")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "The figure\nreports that metric for every arm.",
+                "Any head-to-head performance win over a named tool is out of scope here.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "head-to-head performance win" not in result.report
+
+
+class TestTheFiniteVerbTest:
+    """An inventory item is a fact the prose must convey, so a shared span is
+    expected — unless it predicates, which is the drafter transcribing or the
+    brief author slipping into phrasing."""
+
+    def test_a_shared_inventory_span_with_a_finite_verb_is_flagged(self, render):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+
+        assert 'availability: "the container image is freely available' in result.report
+
+    def test_a_shared_inventory_span_with_no_finite_verb_is_expected(self, render):
+        result = render(
+            "brief-mirror", "MANUSCRIPT.working.md", "--check", "--section", "availability"
+        )
+
+        assert "1 flagged, 1 expected" in result.report
+        assert "container digest" not in result.report
+
+    def test_a_third_person_present_verb_is_a_finite_verb(self, paper, run_in):
+        # The corpus's own flagged inventory span: `suppresses` is the whole
+        # difference between an item and a sentence about one.
+        where = paper("brief-mirror")
+        brief = where / "briefs" / "availability.md"
+        brief.write_text(
+            brief.read_text().replace(
+                "release notes: the container digest, the tag, and the build date.",
+                "illumination correction suppresses tile-boundary seams in every arm.",
+            )
+        )
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "The release notes carry the container digest, the tag, and the build date.",
+                "Illumination correction suppresses tile-boundary seams in every arm.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "availability")
+
+        assert "2 flagged, 0 expected" in result.report
+
+    def test_a_plural_noun_closing_an_item_is_not_a_finite_verb(self, paper, run_in):
+        # The failure to avoid: an instrument that reads every plural as a verb
+        # fires forever on a legend, and an instrument that fires forever is one
+        # nobody reads. The punctuation an item ends its noun on is the guard.
+        where = paper("brief-mirror")
+        brief = where / "briefs" / "availability.md"
+        brief.write_text(
+            brief.read_text().replace(
+                "release notes: the container digest, the tag, and the build date.",
+                "five DSL2 stages, DAPI as the common anchor across rounds.",
+            )
+        )
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "The release notes carry the container digest, the tag, and the build date.",
+                "The pipeline runs five DSL2 stages, DAPI as the common anchor across rounds.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "availability")
+
+        assert "1 flagged, 1 expected" in result.report
+
+
+class TestParagraphShape:
+    """Both structural measures are suspended for a non-originating unit,
+    because both invert there: order tracking the brief is what a venue's field
+    order mandates, and a panel caption is not a unit of argument."""
+
+    def test_paragraph_order_is_reported_for_an_originating_unit(self, render):
+        result = render(
+            "brief-mirror", "MANUSCRIPT.working.md", "--check", "--section", "results"
+        )
+
+        assert "brief-order 3 of 3 (results)" in result.report
+
+    def test_a_non_originating_unit_is_measured_by_neither(self, render, golden):
+        result = render(
+            "brief-mirror", "MANUSCRIPT.working.md", "--check", "--section", "availability"
+        )
+
+        assert result.report == golden("brief-mirror-section-check.txt")
+        assert "paragraphs (originating)  no originating unit in scope" in result.report
+
+    def test_a_single_sentence_paragraph_is_attributed_to_its_unit(self, render):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+
+        assert "single-sentence 1 (results ¶2)" in result.report
+
+    def test_a_single_sentence_paragraph_of_a_non_originating_unit_is_not_counted(
+        self, render
+    ):
+        # Both of `availability`'s paragraphs are one sentence long.
+        result = render(
+            "brief-mirror", "MANUSCRIPT.working.md", "--check", "--section", "availability"
+        )
+
+        assert "single-sentence" not in result.report
+
+    def test_the_ladder_line_is_not_a_proposition(self, paper, run_in):
+        # `Opens:` in the argument zone is bookkeeping, so moving it to the top
+        # of the zone must not shift every proposition's position by one.
+        where = paper("brief-mirror")
+        brief = where / "briefs" / "results.md"
+        brief.write_text(
+            brief.read_text()
+            .replace("## Argument\nRegistration", "## Argument\nOpens: reproducibility of the pipeline -> R2.\nRegistration")
+            .replace("seams.\nOpens: reproducibility of the pipeline -> R2.\n", "seams.\n")
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
+
+        assert "brief-order 3 of 3 (results)" in result.report
+
+    def test_order_is_not_measured_without_a_brief(self, paper, run_in):
+        where = paper("brief-mirror")
+        (where / "briefs" / "results.md").unlink()
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
+
+        assert result.exit_code == 0
+        assert "brief-order not measured (results: no brief this parser can read)" in (
+            result.report
+        )
+
+    def test_both_rows_are_per_unit_and_so_never_out_of_scope(self, render):
+        for granularity in ([], ["--section", "results"]):
+            result = render("brief-mirror", "MANUSCRIPT.working.md", "--check", *granularity)
+
+            rows = _rows(result.report)
+
+            assert SKIPPED not in rows["brief-to-prose overlap"]
+            assert SKIPPED not in rows["paragraphs (originating)"]

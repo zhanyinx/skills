@@ -13,16 +13,39 @@ about a mechanical fact.
 The script is `scripts/render_paper.py`, Python 3, standard library only. It ships inside this skill
 and is consumed only from here.
 
-## The two files it reads
+## The files it reads
 
-Both are declared inputs at the paper root, beside the source:
+All are declared inputs at the paper root, beside the source:
 
 - [`skeleton.md`](SKELETON-FORMAT.md) — the heading tree, its order and levels, the roster, the
   document title and the venue limit.
 - [`spine.md`](SPINE-FORMAT.md) — the claim ladder: the central claim, and one rung per unit.
+- `briefs/<unit>.md` — one brief per unit, read by the overlap instrument.
 
-`render-paper` is their only parser, which is why it documents their formats. **No skill owns either
-file.** A planning ticket creates each; a drafting session may amend its own slot only.
+`render-paper` is the only parser of the first two, which is why it documents their formats. **No
+skill owns either file.** A planning ticket creates each; a drafting session may amend its own slot
+only.
+
+The brief is different: this is its only *parser*, but the drafting skill ships its two templates,
+so what this unit fixes is **the six zone headings** and nothing else — a full format spec here
+would be a second artifact recording one fact, which is how the two drift.
+
+```
+## Argument              ← reader-facing, an originating unit's propositions
+## Inventory             ← reader-facing, the facts a unit must convey
+## Must not claim
+## Sheds
+## Verify before prose
+## Sources
+```
+
+**Exactly two zones are reader-facing**, and they are the only zones whose content may legitimately
+appear in the prose. Every other zone is instruction by virtue of **where it sits** — positional
+separation, no marker strings. A zone heading this parser does not know is reported in the row, not
+raised: the brief feeds reported rows only, so an unreadable one must not change the exit code.
+
+**An absent brief is a legal state.** Briefs arrive as units are planned, and the row says which
+units have none rather than counting them as nothing to report.
 
 ## Modes
 
@@ -68,6 +91,10 @@ The tier answers one question: **would the render emit something false?**
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
   source, an unclosed comment, a malformed `skeleton.md` or `spine.md`, a declared input that is
   missing.
+- **Reported** iff it is a prose fact: brief-to-prose overlap, the finite-verb test, single-sentence
+  body paragraphs and paragraph order. A reported row **cannot fail and never reaches the exit
+  code**, and it carries **no threshold** — turning a prose fact into a floor is what this design
+  refuses, because the judgement axes exist for exactly that.
 
 ### A parse error is not a gate
 
@@ -86,16 +113,18 @@ them looked. What prints instead is one line naming the file, the line and the m
 interface, not formatting.
 
 ```
-$ render-paper MANUSCRIPT.working.md --check --section methods
+$ render-paper MANUSCRIPT.working.md --check --section results
 
   skeleton / spine grammar  PASS
   source grammar            PASS
   slot integrity            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   unit / rung pairing       PASS
   originating slot children PASS
-  unfilled skeleton slot    FAIL — 1 (`methods-imaging`)
+  unfilled skeleton slot    FAIL — 1 (`results-accuracy`)
+  brief-to-prose overlap    2 flagged, 1 expected — results: "registration accuracy is credible o…
+  paragraphs (originating)  single-sentence 1 (results ¶2); brief-order 3 of 3 (results)
 
-  4 pass, 1 fail, 1 out of scope
+  4 pass, 1 fail, 1 out of scope, 2 reported
   → NOT a claim that this section is finished
 ```
 
@@ -103,6 +132,10 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
 - **Three verdicts only:** `PASS`, `FAIL`, and `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`. A check
   that never looked is a **printed row**, never silently a pass. One word cannot carry the difference
   between checked-and-fine and never-checked, which is why no single-word verdict is emitted anywhere.
+- A **reported** row carries no verdict at all — it prints **numbers**. A prose fact has no verdict
+  to give: `PASS` over one would claim the number is fine, which is a judgement this unit does not
+  make, and `FAIL` would be the threshold it refuses. The counts line names them separately for the
+  same reason.
 - A `FAIL` carries its count and what failed.
 - The table closes with the counts and the line saying it is **not** a claim that the section (or the
   document) is finished. A gate with no FAILs is a statement about mechanism, never about judgement.
@@ -179,6 +212,66 @@ injection, one level down.
    is the exception that is not a gap: its own prose is permitted rather than owed, so a parent with
    children renders its heading and lets the children carry the prose.
 
+## The overlap instrument
+
+The instrument that catches prose mirroring its own brief. A drafting session that walks its brief
+one bullet per paragraph produces a list of labelled blocks rather than a manuscript, and the corpus
+this design was calibrated on shows it happening — the audit's own phrase for what it found is
+*transcribed near-verbatim from the briefs*.
+
+**A shared span is a run of five words or more that a unit's prose and its brief share verbatim**,
+measured inside one sentence of each and never across two: a run bridging a full stop is an
+adjacency, not a phrase anybody moved. Case and punctuation are ignored, a run of nothing but
+function words is not a phrase, and the match is word-level so a re-wrapped line still matches.
+
+**The zone the span came from decides the instrument, not the unit:**
+
+| zone | instrument |
+|---|---|
+| `## Argument` | every shared span is **flagged**. Its propositions are phrased as what the reader must end up accepting, so verbatim overlap with one **is** the defect, and no exemption is needed |
+| `## Inventory` | **the finite-verb test**: a shared span is **expected** unless it predicates. An inventory item is a fact the prose must convey — `MIT`, `ghcr.io/org/tool`, `scale bar required` all reach the prose as themselves — and one that predicates is either the drafter transcribing or the brief author slipping into phrasing, which is how the format enforces itself |
+
+**The finite-verb test is a closed list plus one guarded rule, and deliberately no more.** The
+closed list is the finite forms of *be*, *have*, *do* and the modals, which are closed-class words,
+so the list is complete rather than a sample and needs no per-paper extension — which it must not
+have. The one rule catches a third-person present verb: a word ending in `-s`, not closed off by
+punctuation, not first or last in the span, and not preceded by a determiner, number or
+preposition. So *illumination correction **suppresses** tile-boundary seams* is flagged and *5 DSL2
+stages, DAPI as common anchor* is not.
+
+`-ed` is deliberately **not** a tell: *scale bar required* is an expected span, and an `-ed` rule
+would flag it. A bare `-s` rule is equally refused — it reads every plural noun as a verb, and an
+instrument that fires forever on a legend is an instrument nobody reads. The residual cost is a
+plural noun that sits mid-span with no punctuation after it and no determiner before it, which can
+read as a verb; the row prints the span, so a reader sees which one it was.
+
+**Not yet wired: the `## Style` term exemption.** The exemption list for the overlap check is the
+effort map's `## Style` *terms*, and the map is not yet an input to this unit — it arrives with the
+style stanza. Until then a mandated term long enough to be a substantial phrase is reported. The
+exemption covers **terms, never sentences**, which is what keeps the check from being hollowed out
+by its own carve-out.
+
+## Paragraph shape — originating units only
+
+Two structural measures, both reported, both **suspended for a non-originating unit**:
+
+- **single-sentence body paragraphs**, attributed to their unit and their position in it;
+- **paragraph order** against the brief's item order — how many paragraphs sit at the position of
+  the brief item they are about, which is the one-bullet-per-paragraph walk, counted.
+
+Both invert for a non-originating unit, which is why neither runs there. Order tracking the brief is
+what a venue's field order and a figure's lettering **mandate**, so it is the requirement rather
+than the defect; and a panel caption is not a unit of argument, so a one-sentence paragraph is its
+normal shape. Run either on a legend and it fires forever. There the finite-verb test carries the
+whole load — which is why a unit whose stated reason has been withdrawn still keeps its conclusion.
+
+A unit's brief items are the sentences of its `## Argument` zone, less the ladder line: `Rung:`,
+`Closes:`, `Opens:` and `Restates:` carry the unit's relation to the rung above it, and a relation
+is bookkeeping rather than a proposition.
+
+**Both rows are per-unit, so neither is ever out of scope.** `--section` narrows them to the one
+unit; whole-document granularity measures every unit and names each in the row.
+
 ## What it must not do
 
 - Hold any paper-specific text. No bibliography, no section names, no per-paper fixes. Every
@@ -195,7 +288,9 @@ a word budget all key on, 1:1. *slot* — a section position in the heading tree
 collision:** in the annotation channel, `SLOT:` inside braces marks a *venue back-matter field*. Two
 different concepts, one word; every passage where both could apply qualifies which is meant.
 *originating* / *non-originating* — a unit that opens a debt, versus one that closes, restates or
-inventories.
+inventories. *argument brief* / *inventory brief* — the two brief formats, one axis: whether the
+unit opens a debt. *proposition* — one item of an argument zone. *shared span* — a run of words a
+unit's prose and its brief have verbatim in common.
 
 ## Tests
 
