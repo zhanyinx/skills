@@ -4,7 +4,8 @@
 Python 3, standard library only. No third-party import at runtime.
 
 The document is written to stdout; the verdict table and every diagnostic go to
-stderr. `--check` writes no document at all.
+stderr. `--check` writes no document at all, and `--scaffold` writes no document
+either: it seeds the source in place with the anchors the skeleton declares.
 
 Exit codes are the contract every other unit reads:
 
@@ -51,6 +52,7 @@ SLOT_ID = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 COMMENT = re.compile(r"<!--(.*?)-->", re.DOTALL)
 ANCHOR_INTENT = re.compile(r"^slot\s*:", re.IGNORECASE)
 ANCHOR = re.compile(r"^slot\s*:\s*(\S+)\s*$")
+ANCHOR_FORM = "<!-- slot: %s -->"
 HEADING = re.compile(r"^ {0,3}#{1,6}(\s|$)")
 SETEXT = re.compile(r"^ {0,3}(=+|-+)\s*$")
 FENCE = re.compile(r"^ {0,3}(?:```|~~~)", re.MULTILINE)
@@ -642,6 +644,157 @@ def find_paper_root(source, override):
     return start
 
 
+def derive_unit(skeleton, blocks, named):
+    """`--section <unit>`, or `--section` alone over a source that anchors
+    exactly one unit."""
+    if named:
+        unit = skeleton.by_id(named)
+        if unit is None:
+            raise HardError("`%s` is not a slot in the skeleton" % named)
+        if unit.parent is not None:
+            raise HardError(
+                "`%s` is a child slot; a unit is one top-level slot and its subtree"
+                % named
+            )
+        return unit
+    anchored = []
+    for block in blocks:
+        slot = skeleton.by_id(block.slot_id)
+        if slot is None:
+            continue
+        unit = skeleton.unit_of(slot)
+        if unit not in anchored:
+            anchored.append(unit)
+    if len(anchored) != 1:
+        raise HardError(
+            "the source anchors %d units, so `--section` cannot tell which one is "
+            "meant — name it as `--section <unit>`" % len(anchored)
+        )
+    return anchored[0]
+
+
+# --------------------------------------------------------------------------
+# the scaffold
+# --------------------------------------------------------------------------
+
+
+class Region:
+    """One anchor in a source, and every byte between it and the next one."""
+
+    def __init__(self, slot_id, text, line):
+        self.slot_id = slot_id
+        self.text = text
+        self.line = line
+
+
+def split_at_anchors(text, path):
+    """The source split at its anchors, keeping what lies between them
+    verbatim.
+
+    The gate's parser strips the comment channel, which is the one thing a mode
+    that rewrites the source must not do: an author's notes are the source's
+    own content. So the scaffold reads the same anchors through the same
+    refusals, and keeps everything else exactly as it was typed.
+    """
+    fenced = _fenced_spans(text)
+    _refuse_unclosed_comment(text, path, fenced)
+    _refuse_headings(text, path, fenced)
+
+    anchors = []
+    for match in COMMENT.finditer(text):
+        if _inside(fenced, match.start()):
+            continue  # inside a fence it is literal text, not an anchor
+        slot_id = _anchor_slot_id(match, text, path)
+        if slot_id is not None:
+            anchors.append((slot_id, match.start(), match.end()))
+
+    lead = text[: anchors[0][1]] if anchors else text
+    regions = []
+    for index, (slot_id, start, end) in enumerate(anchors):
+        stop = anchors[index + 1][1] if index + 1 < len(anchors) else len(text)
+        regions.append(Region(slot_id, text[end:stop], _line_of(text, start)))
+    return lead, regions
+
+
+def scaffold(source, skeleton, section):
+    """Seed a source with every anchor in scope, in skeleton order.
+
+    A misordered, duplicated or omitted anchor becomes something a drafting
+    session cannot type, rather than something a rule forbids. Headings are
+    never written: injecting them is the render's job on every pass, and a
+    heading in a source is a parse error.
+
+    Idempotent by construction — the seeded form is exactly what the split
+    reads back, so a second run rebuilds the bytes the first one wrote, and a
+    skeleton amendment can be re-seeded safely.
+    """
+    if source.is_dir():
+        raise HardError(
+            "%s is a directory; --scaffold seeds one source file, because one "
+            "source is what carries one unit's anchors" % source
+        )
+    text = source.read_text() if source.exists() else ""
+    lead, regions = split_at_anchors(text, source)
+
+    # Everywhere the scaffold would have to guess, it refuses instead: it
+    # rewrites the file, and a guess would move or merge prose the author never
+    # asked it to touch. Each of these is already a hard error at the gate.
+    if _mask_comments(lead).strip():
+        raise HardError("prose outside every slot in %s" % source.name)
+    prose = {}
+    for region in regions:
+        if skeleton.by_id(region.slot_id) is None:
+            raise HardError(
+                "%s:%d anchors `%s`, absent from the skeleton"
+                % (source.name, region.line, region.slot_id)
+            )
+        if region.slot_id in prose:
+            raise HardError(
+                "`%s` is anchored twice in %s, and the scaffold will not choose "
+                "which block keeps the slot" % (region.slot_id, source.name)
+            )
+        prose[region.slot_id] = region.text.strip()
+
+    # No `--section` scopes the seed to the whole skeleton, which is what a
+    # promoted single-file manuscript wants; `--section` scopes it to one unit
+    # and its subtree, and derives that unit from the anchors already there.
+    unit = derive_unit(skeleton, regions, section) if section is not None else None
+    scope = skeleton.slots if unit is None else skeleton.subtree(unit)
+    # A slot already anchored is kept even when it sits outside the scope: the
+    # scaffold seeds a unit, and it never drops another one's prose.
+    wanted = [slot for slot in skeleton.slots if slot in scope or slot.id in prose]
+    parts = [lead.strip()] if lead.strip() else []
+    for slot in wanted:
+        parts.append(ANCHOR_FORM % slot.id)
+        if prose.get(slot.id):
+            parts.append(prose[slot.id])
+    seeded = "\n\n".join(parts) + "\n"
+
+    added = [slot.id for slot in wanted if slot.id not in prose]
+    if seeded == text:
+        sys.stderr.write(
+            "render-paper: %s already carries every anchor in scope, in skeleton "
+            "order — unchanged\n" % source
+        )
+        return EXIT_OK
+    try:
+        source.write_text(seeded)
+    except OSError as error:
+        raise HardError("%s: cannot be written — %s" % (source, error.strerror))
+    sys.stderr.write(
+        "render-paper: seeded %s — %d anchor%s in skeleton order%s\n"
+        % (
+            source,
+            len(wanted),
+            "" if len(wanted) == 1 else "s",
+            (", %d added (%s)" % (len(added), ", ".join("`%s`" % id for id in added)))
+            if added
+            else "",
+        )
+    )
+    return EXIT_OK
+
+
 # --------------------------------------------------------------------------
 # the check registry
 # --------------------------------------------------------------------------
@@ -834,35 +987,6 @@ class Paper:
         return self._prose.get(slot.id, "")
 
 
-def derive_unit(skeleton, blocks, named):
-    """`--section <unit>`, or `--section` alone over a source that anchors
-    exactly one unit."""
-    if named:
-        unit = skeleton.by_id(named)
-        if unit is None:
-            raise HardError("`%s` is not a slot in the skeleton" % named)
-        if unit.parent is not None:
-            raise HardError(
-                "`%s` is a child slot; a unit is one top-level slot and its subtree"
-                % named
-            )
-        return unit
-    anchored = []
-    for block in blocks:
-        slot = skeleton.by_id(block.slot_id)
-        if slot is None:
-            continue
-        unit = skeleton.unit_of(slot)
-        if unit not in anchored:
-            anchored.append(unit)
-    if len(anchored) != 1:
-        raise HardError(
-            "the source anchors %d units, so `--section` cannot tell which one is "
-            "meant — name it as `--section <unit>`" % len(anchored)
-        )
-    return anchored[0]
-
-
 def render_document(paper):
     """Inject every heading from the skeleton, at its level, with its exact
     text, on every pass.
@@ -952,7 +1076,8 @@ def build_parser():
     mode.add_argument(
         "--scaffold",
         action="store_true",
-        help="pre-seed a unit's source with every anchor in its subtree",
+        help="pre-seed a unit's source with every anchor in its subtree, in "
+        "skeleton order; writes the source in place",
     )
     parser.add_argument(
         "--section",
@@ -975,18 +1100,16 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.scaffold:
-        sys.stderr.write(
-            "render-paper: --scaffold is not built yet; a unit's anchors must be "
-            "seeded by hand until it is\n"
-        )
-        return EXIT_HARD
-
     source = Path(args.source)
     granularity = SECTION if args.section is not None else DOCUMENT
 
     try:
         root = find_paper_root(source, Path(args.paper) if args.paper else None)
+        if args.scaffold:
+            # The scaffold writes the source rather than reading a finished
+            # one, so it neither reads the ladder — the gate's input, with no
+            # use here — nor runs a check: it emits no document to be wrong.
+            return scaffold(source, parse_skeleton(root / "skeleton.md"), args.section)
         paths = source_paths(source)
         skeleton = parse_skeleton(root / "skeleton.md")
         spine = parse_spine(root / "spine.md")

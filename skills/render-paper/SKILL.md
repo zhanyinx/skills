@@ -30,7 +30,7 @@ file.** A planning ticket creates each; a drafting session may amend its own slo
 render-paper <source> --circulate            emit a circulatable document
 render-paper <source> --submit               emit a submittable one, or refuse
 render-paper <source> --check                run the gate only; emit no document
-render-paper <unit>   --scaffold             pre-seed a unit's anchors (not built yet)
+render-paper <source> --scaffold             pre-seed a unit's anchors into its source
                       --section [<unit>]     modifier: section granularity
 ```
 
@@ -40,6 +40,9 @@ render-paper <unit>   --scaffold             pre-seed a unit's anchors (not buil
 
 `--section` takes a unit — one top-level skeleton slot and its subtree. Bare `--section` derives the
 unit from the source's anchors, and says so if the source anchors more than one.
+
+`--scaffold` is the one mode that **writes the source** rather than reading a finished one: see
+*The scaffold* below.
 
 **The document goes to stdout. The verdict table and every diagnostic go to stderr.** So
 `render-paper MANUSCRIPT.working.md --circulate > MANUSCRIPT.md` writes the render and leaves the
@@ -107,6 +110,40 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
 
 The two parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
 failure suppresses the table.
+
+## The scaffold
+
+```
+render-paper drafts/methods.md --scaffold --section methods
+```
+
+Before a drafting session writes a word, its source already carries **every anchor in its subtree,
+in skeleton order**. A misordered, duplicated or omitted anchor is then something the session
+**cannot type**, rather than something a rule forbids — the same construction move as heading
+injection, one level down.
+
+- **Anchors are what live in a source; headings are not.** The scaffold writes no heading text,
+  because injecting the headings is the render's job on **every** pass.
+- **It is idempotent.** The seeded form is exactly what the scaffold reads back, so a second run
+  changes nothing — which is what makes it safe to re-run after a skeleton amendment, where it adds
+  the new slot's anchor and moves no prose.
+- **A parent slot may bear prose**, so scaffolding a parent with children seeds the parent's anchor,
+  then its children's: the parent's own prose is whatever ends up before the first child anchor.
+- **Scope.** `--section <unit>` seeds that unit's subtree; bare `--section` derives the unit from
+  the anchors already in the source; no `--section` seeds every slot in the skeleton, which is what
+  a promoted single-file manuscript wants. A slot already anchored is kept even when it sits outside
+  the scope — the scaffold seeds one unit and never drops another's prose.
+- **The source is rewritten in place**, and created when it does not exist yet. Nothing goes to
+  stdout, and there is no verdict table: the scaffold runs no check, because it emits no document
+  that could be false. Everything but the anchors' order is kept verbatim, **the author-facing
+  comment channel included** — the comment strip belongs to the render, and a mode that rewrites the
+  source must not take an author's notes with it.
+- **The ladder is not read.** `spine.md` is the gate's input; the anchors come from the skeleton
+  alone, and a declared input with no use here would be a refusal of a legal state.
+- **Wherever it would have to guess, it refuses and writes nothing**: a slot anchored twice, an
+  anchor naming no skeleton slot, prose sitting outside every slot, a directory in place of a
+  source. Each is already a hard error at the gate, and a guess would move or merge prose the author
+  never asked it to touch.
 
 ## Construction duties
 

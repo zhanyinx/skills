@@ -215,11 +215,11 @@ class TestTheCLIContract:
         assert result.exit_code == 2
         assert result.document == ""
 
-    def test_scaffold_is_a_named_mode(self, render):
-        result = render("clean", "MANUSCRIPT.working.md", "--scaffold")
+    def test_scaffold_is_one_of_the_named_modes(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--scaffold", "--check")
 
+        assert result.exit_code == 2
         assert result.document == ""
-        assert "--scaffold" in result.report
 
     def test_clean_is_not_an_output_token(self, render):
         for mode in ("--check", "--circulate", "--submit"):
@@ -562,3 +562,273 @@ class TestNoProseIsEverDroppedSilently:
         assert result.exit_code == 0
         assert "The paper measures one thing." in result.document
         assert "A second block claiming the same slot." in result.document
+
+
+class TestScaffold:
+    """`--scaffold` pre-seeds a unit's source with every anchor in its subtree,
+    in skeleton order, so a misordered, duplicated or omitted anchor is
+    something a drafting session cannot type rather than something a rule
+    forbids."""
+
+    def test_it_seeds_every_anchor_in_the_subtree_in_skeleton_order(
+        self, paper, run_in, golden
+    ):
+        where = paper("clean")
+
+        result = run_in(where, "methods.md", "--scaffold", "--section", "methods")
+
+        assert result.exit_code == 0
+        assert (where / "methods.md").read_text() == golden("scaffold-methods.md")
+
+    def test_it_writes_no_heading_into_the_source(self, paper, run_in):
+        # Heading injection is the render's job on every pass, so the skeleton's
+        # heading text has no business in a source at all.
+        where = paper("clean")
+
+        run_in(where, "methods.md", "--scaffold", "--section", "methods")
+        seeded = (where / "methods.md").read_text()
+
+        assert "#" not in seeded
+        assert "Imaging" not in seeded
+        assert "Registration" not in seeded
+
+    def test_running_it_twice_changes_nothing(self, paper, run_in):
+        where = paper("clean")
+
+        run_in(where, "methods.md", "--scaffold", "--section", "methods")
+        first = (where / "methods.md").read_text()
+        second = run_in(where, "methods.md", "--scaffold", "--section", "methods")
+
+        assert second.exit_code == 0
+        assert (where / "methods.md").read_text() == first
+        assert "unchanged" in second.report
+
+    def test_it_is_idempotent_over_a_source_that_already_carries_prose(
+        self, paper, run_in
+    ):
+        where = paper("clean")
+        source = where / "MANUSCRIPT.working.md"
+
+        run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        first = source.read_text()
+        run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+
+        assert source.read_text() == first
+
+    def test_a_parent_s_own_prose_stays_before_its_first_child_anchor(
+        self, paper, run_in
+    ):
+        # A parent slot may bear prose, and its own prose is exactly the text
+        # preceding its first child anchor.
+        where = paper("clean")
+        source = where / "methods.md"
+        source.write_text(
+            "<!-- slot: methods -->\n\n"
+            "The pipeline runs as five stages.\n"
+        )
+
+        result = run_in(where, "methods.md", "--scaffold", "--section", "methods")
+
+        assert result.exit_code == 0
+        assert source.read_text() == (
+            "<!-- slot: methods -->\n\n"
+            "The pipeline runs as five stages.\n\n"
+            "<!-- slot: methods-imaging -->\n\n"
+            "<!-- slot: methods-registration -->\n"
+        )
+
+    def test_a_skeleton_amendment_adds_its_anchor_and_moves_no_prose(
+        self, paper, run_in
+    ):
+        where = paper("clean")
+        source = where / "MANUSCRIPT.working.md"
+        skeleton = where / "skeleton.md"
+        run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        skeleton.write_text(
+            skeleton.read_text().replace(
+                "| methods-registration | 3 | Registration | procedure |",
+                "| methods-registration | 3 | Registration | procedure |\n"
+                "| methods-drift | 3 | Drift | procedure |",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        seeded = source.read_text()
+
+        assert result.exit_code == 0
+        assert "<!-- slot: methods-drift -->" in seeded
+        assert seeded.index("<!-- slot: methods-drift -->") > seeded.index(
+            "Registration proceeds pairwise"
+        )
+        assert seeded.index("<!-- slot: methods-drift -->") < seeded.index(
+            "<!-- slot: results -->"
+        )
+        assert "Accuracy is sufficient for per-arm comparison" in seeded
+
+    def test_it_preserves_the_author_facing_comment_channel(self, paper, run_in):
+        where = paper("clean")
+
+        run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        seeded = (where / "MANUSCRIPT.working.md").read_text()
+
+        assert "R1 — abstract" in seeded
+        assert "confirm the tool list" in seeded
+        assert "superseded outline" in seeded
+
+    def test_it_leaves_every_slot_outside_the_unit_alone(self, paper, run_in):
+        where = paper("clean")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "<!-- slot: methods-registration -->\n\n"
+                "Registration proceeds pairwise against the DAPI channel, "
+                "which every round shares.\n",
+                "",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold", "--section", "methods")
+        seeded = source.read_text()
+
+        assert result.exit_code == 0
+        assert "<!-- slot: methods-registration -->" in seeded
+        assert "We register cyclic imaging panels" in seeded
+        assert "Cyclic imaging acquires one panel per round" in seeded
+        assert "Accuracy is sufficient for per-arm comparison" in seeded
+
+    def test_it_orders_the_anchors_by_the_skeleton_and_not_by_the_source(
+        self, paper, run_in
+    ):
+        where = paper("pre-promotion")
+        source = where / "drafts" / "results.md"
+        source.write_text(
+            "<!-- slot: results -->\n\nThe measurement supports the claim.\n\n"
+            "<!-- slot: abstract -->\n\nWe measure one thing.\n"
+        )
+
+        result = run_in(where, "drafts/results.md", "--scaffold")
+        seeded = source.read_text()
+
+        assert result.exit_code == 0
+        assert seeded.index("<!-- slot: abstract -->") < seeded.index(
+            "<!-- slot: results -->"
+        )
+        assert seeded.index("We measure one thing.") < seeded.index(
+            "The measurement supports the claim."
+        )
+
+    def test_it_needs_no_spine(self, paper, run_in):
+        # Scaffolding seeds anchors from the skeleton alone; the ladder is the
+        # gate's input, and a check with no use here would be a check that
+        # refuses a legal state.
+        where = paper("clean")
+        (where / "spine.md").unlink()
+
+        result = run_in(where, "methods.md", "--scaffold", "--section", "methods")
+
+        assert result.exit_code == 0
+        assert (where / "methods.md").exists()
+
+    def test_it_emits_no_document(self, paper, run_in):
+        where = paper("clean")
+
+        result = run_in(where, "methods.md", "--scaffold", "--section", "methods")
+
+        assert result.document == ""
+
+    def test_a_fenced_anchor_is_not_an_anchor_here_either(self, paper, run_in):
+        # A source showing anchor syntax in a fence is showing it, not using
+        # it — so the scaffold must neither split there nor seed the slot.
+        where = paper("fenced")
+        source = where / "MANUSCRIPT.working.md"
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        seeded = source.read_text()
+
+        assert result.exit_code == 0
+        assert seeded.count("<!-- slot: not-an-anchor -->") == 1
+        assert "<!-- an unclosed comment, shown as text" in seeded
+        assert seeded.index("<!-- slot: not-an-anchor -->") > seeded.index(
+            "<!-- slot: results -->"
+        )
+
+
+class TestScaffoldRefusals:
+    """Scaffold rewrites the source, so wherever it would have to guess it
+    refuses instead, and writes nothing at all."""
+
+    def test_a_slot_anchored_twice_is_refused_and_nothing_is_written(
+        self, paper, run_in
+    ):
+        where = paper("duplicate-slot")
+        source = where / "MANUSCRIPT.working.md"
+        before = source.read_text()
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+
+        assert result.exit_code == 2
+        assert "anchored twice" in result.report
+        assert source.read_text() == before
+
+    def test_an_anchor_naming_no_skeleton_slot_is_refused(self, paper, run_in):
+        where = paper("orphan-slot")
+        source = where / "MANUSCRIPT.working.md"
+        before = source.read_text()
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+
+        assert result.exit_code == 2
+        assert "absent from the skeleton" in result.report
+        assert source.read_text() == before
+
+    def test_prose_outside_every_slot_is_refused(self, paper, run_in):
+        where = paper("stray-prose")
+        source = where / "drafts" / "results.md"
+        before = source.read_text()
+
+        result = run_in(where, "drafts/results.md", "--scaffold")
+
+        assert result.exit_code == 2
+        assert "prose outside every slot in results.md" in result.report
+        assert source.read_text() == before
+
+    def test_a_malformed_anchor_is_a_parse_error_and_nothing_is_written(
+        self, paper, run_in
+    ):
+        where = paper("malformed-anchor")
+        source = where / "MANUSCRIPT.working.md"
+        before = source.read_text()
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+
+        assert result.exit_code == 3
+        assert "malformed anchor" in result.report
+        assert source.read_text() == before
+
+    def test_a_heading_in_the_source_is_a_parse_error(self, paper, run_in):
+        where = paper("heading-in-source")
+        source = where / "MANUSCRIPT.working.md"
+        before = source.read_text()
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+
+        assert result.exit_code == 3
+        assert "is a heading" in result.report
+        assert source.read_text() == before
+
+    def test_a_directory_is_not_a_unit_s_source(self, paper, run_in):
+        where = paper("pre-promotion")
+
+        result = run_in(where, "drafts", "--scaffold")
+
+        assert result.exit_code == 2
+        assert "one source file" in result.report
+
+    def test_a_fresh_source_with_no_named_unit_asks_for_one(self, paper, run_in):
+        where = paper("clean")
+
+        result = run_in(where, "methods.md", "--scaffold", "--section")
+
+        assert result.exit_code == 2
+        assert "--section <unit>" in result.report
+        assert not (where / "methods.md").exists()
