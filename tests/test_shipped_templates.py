@@ -17,6 +17,9 @@ import shutil
 from pathlib import Path
 
 import pytest
+from shipped_text import MARKDOWN_BLOCK as FENCE
+from shipped_text import SECTION as ZONE
+from shipped_text import STYLE_KEYS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WRITE_PAPER = REPO_ROOT / "skills" / "write-paper"
@@ -24,8 +27,6 @@ BRIEF_FORMAT = WRITE_PAPER / "BRIEF-FORMAT.md"
 MAP_SECTIONS = WRITE_PAPER / "MAP-SECTIONS.md"
 SKILL = WRITE_PAPER / "SKILL.md"
 
-FENCE = re.compile(r"^```markdown\n(.*?)^```", re.MULTILINE | re.DOTALL)
-ZONE = re.compile(r"^## (.+)$", re.MULTILINE)
 RELATION_LINE = re.compile(r"^(rung|closes|opens|restates)\s*:", re.IGNORECASE)
 SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
 
@@ -40,17 +41,10 @@ BRIEF_ZONES = READER_FACING + (
     "Sources",
 )
 
-# The style stanza's closed key set. `## Style`'s map-section template may name
-# none of them: the key set has one home, and a domain-agnostic map template
-# that enumerated it would be the second.
-STYLE_KEYS = (
-    "active-we",
-    "plain-words",
-    "build-in-steps",
-    "spelling-variant",
-    "em-dash-threshold",
-    "terms",
-)
+# `## Style`'s map-section template may name none of the style keys: the key
+# set has one home, and a domain-agnostic map template that enumerated it would
+# be the second. `STYLE_KEYS` is imported rather than transcribed for the same
+# reason — this module and the `wayfinder` one both assert against it.
 
 
 def brief_templates():
