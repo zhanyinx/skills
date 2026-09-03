@@ -37,6 +37,8 @@ Draft **one unit** — one top-level section and its subtree — from its brief,
 
 It carries **construction rules only** — rules that hold while the sentence is being written, not after. Body prose, no headings at any level, every figure, panel and citation by stable name, and anything unverifiable written as a hole carrying the gate bit rather than a plausible-sounding placeholder. It invokes `render-paper` at each seam, treats an em-dash count over the threshold as blocking that seam, and reviews **the render** rather than the annotated source.
 
+**Installing it gives you no house style.** It ships [the style stanza's schema](skills/write-paper/STYLE-STANZA.md) — the key names, their domains and their tiers — and a **values-blank** exemplar to copy to `~/.agents/style/academic-writing.md` and fill in yourself. No filled value ships, because neutral-looking defaults are one person's spelling and voice with the authorship filed off. Until you write that file, the craft invariants hold, the em-dash gate runs at its default of `0`, and **no stylistic preference is in force** — the session says so in one line rather than inventing one.
+
 ### review-paper
 
 Review a piece of academic writing since a fixed point along two axes — **Fidelity** (does the text accurately represent its evidence, sources, and literature?) and **Craft** (is the prose clear, non-redundant, correctly hedged?) — plus a direct **cross-reference integrity** check. The two axes run as parallel sub-agents; results are reported side by side.
