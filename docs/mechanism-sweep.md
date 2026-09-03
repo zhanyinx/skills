@@ -102,6 +102,12 @@ find.
 | a `revise` may not be satisfied by an unconditional transform | judgement, the pipeline-wide Tier 2 ban |
 | a load-bearing gap does not hold its ticket open | **gate row** — it is written back as a `!` annotation, so the refusal moves to `--submit` |
 | the draft map's `## Notes` carries only per-effort facts | **test** — same module |
+| a `draft` closes on zero gate FAILs, with every finding fixed, written back, or dispositioned — silence being none of the three | **gate row** for the FAIL half; **test** for the three dispositions, which this file and `review-paper` both state |
+| the checkpoint reviews the render and never the annotated source | **test** — the rule is restated in three files, and all three are asserted to carry it |
+
+The last two are the duplications `wayfinder` was always going to carry: a ticket type has to state
+its own closing condition, and a skill may not read another skill's directory. The third of that set
+is the abolished `CLEAN` verdict, asserted over all five files.
 
 ---
 

@@ -787,6 +787,42 @@ class TestTheTierTwoInvariantsHaveOneSet:
         )
 
 
+class TestTheRulesWayfinderRestates:
+    """`wayfinder` restates three rules that are owned elsewhere, because a
+    skill may not read another skill's directory and a ticket type has to state
+    its own closing condition. The abolished `CLEAN` verdict is one, asserted
+    above over all five files. These are the other two."""
+
+    def test_the_render_is_reviewed_and_never_the_annotated_source(self):
+        """Three files carry it: the drafting session that invokes the review,
+        the review itself, and the ticket type that defines the checkpoint.
+        Reviewing the source is how six sections once passed a per-section
+        checkpoint while carrying 37 annotation markers between them — the
+        reviewer read the brackets as scaffolding."""
+        for unit in ("wayfinder", "write-paper"):
+            assert "the render, not the annotated source" in collapsed(shipped(unit)), unit
+        assert "reads the render, never the annotated source" in collapsed(
+            shipped("review-paper")
+        )
+
+    def test_the_three_dispositions_agree_across_both_owners(self):
+        """A finding leaves a review in one of three states, and the fourth —
+        saying nothing — is the one the rule exists to close. `review-paper`
+        owns the states; `wayfinder` owns when the ticket may close on them, so
+        both name the same three."""
+        for unit in ("wayfinder", "review-paper"):
+            text = collapsed(shipped(unit))
+            assert "fixed" in text, unit
+            assert "written back as a `!` annotation" in text, unit
+            assert "explicitly dispositioned with a reason" in text, unit
+            assert "Silence is not a disposition" in text, unit
+
+    def test_the_closing_condition_is_zero_gate_fails(self):
+        """The half only `wayfinder` states: a diff-clean judgement can never
+        again close a ticket over a unit the gate refuses."""
+        assert "zero FAILs" in collapsed(shipped("wayfinder"))
+
+
 class TestNoHouseStyleShipsInAnySkillFile:
     """Supersedes `test_style_stanza.py`'s single-file guard, which asserted
     this of `write-paper` alone. The leak is not particular to the skill that
