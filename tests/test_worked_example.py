@@ -557,15 +557,31 @@ class TestTheClassesAnotherUnitOwns:
             assert not row(result.report, name).startswith(("PASS", "FAIL", "WARN"))
         assert "6 reported" in result.report
 
-    def test_the_supersession_diff_has_no_row_yet(self, render):
-        """`6a`: reconstructed across two drafts from the history, which a
-        fixture pair does not have. It is a finding rather than a gate and it
-        belongs to its own ticket, so the registry carries no row for it — and
-        a row is never printed without a check behind it."""
-        result = render(CASE, AFTER, "--check")
+    def test_the_supersession_diff_reports_and_never_gates(self, render):
+        """`6a`: the row landed with its own ticket, and it stays owned
+        elsewhere — `wayfinder` makes `revise` a type with a mechanical
+        discriminator, and the row is the drop-guard beside it, **a finding
+        rather than a gate.**
 
+        It is reconstructed across two drafts from the *history*, which a
+        fixture pair does not have, and it runs over one unit at a time. So
+        what this pair asserts is what holds with no ref to hand: the row is
+        printed at both granularities — a row is never printed without a check
+        behind it — and it prints no `FAIL` at either. That it moves no exit
+        code is pinned where the ref exists, in `test_supersession.py`, over a
+        revision that legitimately deletes most of a unit.
+        """
         assert "6a" in OWNED_ELSEWHERE
-        assert row(result.report, "supersession diff") is None
+
+        document = render(CASE, AFTER, "--check")
+        section = render(CASE, AFTER, "--check", "--section", "results-discussion")
+
+        assert row(document.report, "supersession diff") == (
+            "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
+        )
+        assert "not a supersession" in row(section.report, "supersession diff")
+        assert "FAIL" not in row(document.report, "supersession diff")
+        assert "FAIL" not in row(section.report, "supersession diff")
 
     def test_no_sentence_names_a_container_to_close_a_debt(self, paper):
         """`6b`: `S3` makes the container the illegal object. Naming a
@@ -691,8 +707,10 @@ class TestTheRedraftRenders:
 
     def test_the_section_render_is_the_drafting_seam(self, render):
         """`C7` makes the per-section render the `draft` checkpoint, and the
-        em-dash count is the one reported row that runs at section
-        granularity, because a seam is one section."""
+        em-dash count is the reported row that *measures* at section
+        granularity, because a seam is one section. The rhythm diagnostics stay
+        whole-document; the supersession diff is the other way round, and runs
+        here and nowhere else."""
         result = render(CASE, AFTER, "--check", "--section", "results-discussion")
 
         assert row(result.report, "em dashes (threshold 0)") == "PASS — 0"

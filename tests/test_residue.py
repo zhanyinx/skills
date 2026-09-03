@@ -251,6 +251,10 @@ class TestNeitherLintChangesTheExitCodeBeyondTheWarningChannel:
         a **reported** row, which has no bucket in `failed` and so cannot reach
         the exit code at all. A threshold on a measurement is a reading
         instrument; a threshold on a refusal is an override.
+
+        `--supersedes` is not one either: it names the old side of a diff
+        rather than a bar, the row it feeds is reported, and the drop bar it
+        reads against is a constant no caller can move.
         """
         result = render("residue", "--help")
 
@@ -264,6 +268,7 @@ class TestNeitherLintChangesTheExitCodeBeyondTheWarningChannel:
             "--section",
             "--paper",
             "--em-dash-threshold",
+            "--supersedes",
             "--help",
         }
 

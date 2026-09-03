@@ -68,7 +68,7 @@ read the brackets as scaffolding.
 ### 2. Run the gate and report it verbatim
 
 ```
-render-paper <source> --check [--section <unit>] [--em-dash-threshold N]
+render-paper <source> --check [--section <unit>] [--em-dash-threshold N] [--supersedes <ref>]
 ```
 
 Report the **exit code** and the **per-check verdict table verbatim**. Do not summarise it, do not
@@ -78,6 +78,13 @@ prose.**
 `N` is the em-dash threshold from the effective stanza, which you derive yourself in step 5; the
 skill default is `0`. Derive that one value before running this, so the table reports the bar the
 effort actually set rather than a bar it had visibly raised.
+
+**Pass `--supersedes` when, and only when, this is a review of a supersession** — a `revise` ticket
+naming the commit ref its superseded draft closed at. That is the one input which makes the
+supersession row report what the revision lost instead of *not a supersession*; the row is a finding
+and never a gate, so carry it into the report and leave the disposition to the author. Never pass it
+for a fresh draft: there is no old side, and a diff-relative reading of one is the bug this pairing
+exists to contain.
 
 Whole-document checks at section granularity print `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`.
 **That is a printed row, not a pass.** Carry every such row into the report; dropping them is what

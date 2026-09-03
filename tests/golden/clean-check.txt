@@ -20,8 +20,9 @@
   subject openings                6 used once (of 6 sentences)
   sentence length                 mean 13.7, CV 0.22, 0% over 35 words (6 sentences)
   locality test                   4 units, 6 slots, 2 cross-unit edges (abstract restates results; `D1` introduction→results)
+  supersession diff               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  16 pass, 0 fail, 0 out of scope, 6 reported
+  16 pass, 0 fail, 1 out of scope, 6 reported
   → NOT a claim that this document is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit

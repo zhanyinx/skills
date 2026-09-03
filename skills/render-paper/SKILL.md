@@ -85,6 +85,7 @@ render-paper <source> --check                run the gate only; emit no document
 render-paper <source> --scaffold             pre-seed one unit's anchors into its source
                       --section [<unit>]     modifier: section granularity
                       --em-dash-threshold N  modifier: the em-dash bar, default 0
+                      --supersedes <ref>     modifier: the commit the superseded draft closed at
 ```
 
 **There is no default mode.** The caller states which artifact it wants. `<source>` is one file
@@ -97,6 +98,10 @@ unit from the source's anchors, and says so if the source anchors more than one.
 `--scaffold` is the one mode that **writes the source** rather than reading a finished one, and the
 one that takes `--section` as the **name of a unit** rather than as a granularity: it seeds one unit
 and only one. See *The scaffold* below.
+
+`--supersedes` takes the commit ref a `revise` ticket's superseded draft closed at, and feeds one
+reported row. It is a modifier on `--section`, because a supersession is one unit: over a whole
+document the row prints `SKIPPED`. See [the supersession diff](#the-supersession-diff).
 
 **The document goes to stdout. The verdict table and every diagnostic go to stderr.** So
 `render-paper MANUSCRIPT.working.md --circulate > MANUSCRIPT.md` writes the render and leaves the
@@ -137,8 +142,8 @@ The tier answers one question: **would the render emit something false?**
   rather than by the renderer, so it is the hard error above, and a paper citing nothing needs no
   library at all.
 - **Reported** iff the fact is worth an author's attention and no exit code: the em-dash count, the
-  prose diagnostics, and the locality test. **A reported row never changes the exit code**, in any
-  mode — see below.
+  prose diagnostics, the locality test, and the supersession diff. **A reported row never changes the
+  exit code**, in any mode — see below.
 
 A `warnings` block on stderr sits under every tier and moves **no** exit code: a brace label over 80
 characters, a bare brace standing alone in its own block, a label that opens `slot:` in case `SLOT:`
@@ -188,8 +193,9 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  supersession diff               not a supersession — no `--supersedes` ref
 
-  10 pass, 2 fail, 8 out of scope, 2 reported
+  10 pass, 2 fail, 8 out of scope, 3 reported
   → NOT a claim that this section is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit
@@ -219,7 +225,9 @@ input to a diff-relative judgement axis. See [the channel](ANNOTATION-CHANNEL.md
   `4 units, 6 slots, 2 cross-unit edges (…)` where a gate row prints `PASS`; what to do about the
   number is judgement the render does not hold. The one exception is the em-dash count, which is
   measured against a threshold and so takes `PASS` or `FAIL` — and still moves no exit code. Where a
-  reported row is whole-document only, it prints `SKIPPED` like any other out-of-scope row.
+  row can speak at one granularity only, it prints `SKIPPED` at the other, like any other
+  out-of-scope row: that is *whole-document only* for most of them, and **section only** for the
+  supersession diff.
 - The table closes with the counts and the line saying it is **not** a claim that the section (or the
   document) is finished. A gate with no FAILs is a statement about mechanism, never about judgement.
   Every row is counted once, under what it printed, so the counts sum to the rows.
@@ -317,9 +325,9 @@ not even see a failing row until it submits.
 
 ## The reported tier
 
-Six rows carrying **numbers, never verdicts**, and **never the exit code**. They are the prose facts
-an author and a review both need. Gating submission is reserved to the annotation gate bit, so a
-number here can be over any bar and `--submit` still emits.
+Eight rows carrying **numbers, never verdicts**, and **never the exit code**. They are the prose
+facts an author and a review both need. Gating submission is reserved to the annotation gate bit, so
+a number here can be over any bar and `--submit` still emits.
 
 | row | what it reports | threshold |
 |---|---|---|
@@ -329,8 +337,10 @@ number here can be over any bar and `--submit` still emits.
 | `adversative ratio` | sentences that mark a turn, over sentences in scope | none |
 | `subject openings` | how the sentences begin, most frequent first; every opening used more than once by name, the rest as a count of openings used once | none |
 | `sentence length` | mean, coefficient of variation, share over 35 words | none |
+| `locality test` | the tree an amendment moves, and every edge tying one unit to another | none |
+| `supersession diff` | the two body word counts, and every structural loss this revision did not declare | **yes**, a constant no caller can move |
 
-**The em-dash count is the one measured against a bar.** An em dash marks a logical relation without
+**The em-dash count is the one bar the caller sets.** An em dash marks a logical relation without
 naming it; the ban failed 98 times as a bullet a drafting session attested to, and it is exactly as
 countable as a figure reference. So it is counted here, and the same count is a **blocking gate at
 the drafting seam** — one implementation, invoked twice. **How to remove one is not this unit's
@@ -435,6 +445,77 @@ deleted**, so a reported line number is the author's own line number.
 A sentence ends at `.`, `!` or `?` followed by whitespace, unless what precedes it is an abbreviation
 or an initial. A word is a whitespace-delimited token with a letter or a digit in it, so a standalone
 dash is punctuation. A paragraph is a run of non-blank lines.
+
+### The supersession diff
+
+```
+render-paper MANUSCRIPT.working.md --check --section methods --supersedes 9f31c02
+```
+
+When a unit is re-drafted, the author learns **what the revision silently lost**. The row compares
+the **old render** of that unit against the **new render** and reports five structural losses:
+
+| loss | what it says |
+|---|---|
+| body word count | *body 2767 → 584 words (down 78%, past the 25% bar)* — the counts print either way |
+| a heading-level block gone | *heading lost (`### Registration`)* — keyed on the **slot**, so a rename is the same block and not a loss |
+| a figure or panel reference gone | *figure reference lost (`@fig:overlay`)* |
+| a reference that lost its only in-text anchor | *reference lost its only anchor (`@muhlberg2020`)* |
+| a gate-bit annotation that vanished unclosed | *gate annotation vanished unclosed (`⟦HOLE: best-arm Dice⟧`)* |
+
+**A diff-relative reading is the wrong instrument for a fresh draft and the right one here.** For a
+`revise` ticket the diff is not an approximation of the question, it *is* the question. A fresh draft
+has no old side, and the row says *not a supersession — no `--supersedes` ref* rather than passing.
+
+**It is a finding, never a gate.** A revision that correctly removes 2,000 words, because the ladder
+amendment deleted the rung those words served, must not be blocked by its own success. Two
+mechanisms hold that rather than one rule: the row sits in the reported tier, which has no bucket the
+exit code reads, and it prints a number, which has no `FAIL` to print.
+
+**There is no keep-list field** on a revision, here or anywhere in the interface. A list of what must
+not change would be written by the same agent that drops a claim, and it would omit the dropped
+claim too. So the drop-guard is **mechanical**, and the drop bar is a **constant** rather than an
+option: the row cannot gate, so a knob would buy an effort nothing it does not already have from the
+two counts the row always prints.
+
+**Where the old side comes from.** Renders are ephemeral, but the render is a **pure function of the
+source** and git is the audit trail: the source is checked out at the commit the original `draft`
+ticket closed at — as a `git archive` stream into a scratch directory, so neither the index nor the
+working tree is touched — and **the same render** runs over it, at the same section anchor.
+Post-promotion one side comes from `MANUSCRIPT.working.md` and the other from the frozen
+`drafts/<unit>.md`. **Which source carries the unit decides, not which source exists**: at the old
+ref the manuscript may already hold the units promoted before this one while this unit's prose is
+still in its draft, so the old side is whichever source *anchors* the unit — which is decidable
+because **anchors, not headings, are what live in the source**. Every way that can fail — no `git`, a
+ref nobody kept, a tree with no source in it, no source anchoring the unit, a source the old skeleton
+can no longer describe — prints as `old side unavailable — …` in the row and **reaches no exit code**.
+
+**One unit at a time**, so this is the one row that is *section granularity only*: over a whole
+document it prints `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`, the same way a whole-document row
+does under `--section`.
+
+**A figure and a panel are one token class**, so the check needs no per-class branch: a lost panel
+reference reports in the same class, in the same words, as a lost figure reference. A **citation** is
+its own class, because the consequences differ: a figure name nothing points at is a hard error the
+gate already carries, while the reference list is built from the cited keys, so a dropped key
+silently drops a reference and no other check looks. A key still cited in another unit costs the
+document no reference and is not reported.
+
+**Deletion is the only closure, so *gone* alone says nothing** about the fifth loss: substituting the
+real value is how a hole is closed, and the annotation goes with it. So the discriminator is the one
+the channel's own syntax hands over — **the old side's prose already carries the brace blanked**, so
+it holds every word around the hole and none inside it. A supplied value therefore leaves the
+paragraph **longer** than that, which is the one thing a supplied value cannot fail to do:
+
+| the revision | the row |
+|---|---|
+| the value substituted, the sentence standing | nothing — that *is* the closure |
+| the marker deleted in place, no value supplied | **reported** — the claim now rests on nothing, and this is the shape that ships an unsupported assertion |
+| the whole block deleted | **reported** — no paragraph came back at all |
+
+The doubt is resolved **towards reporting**, and the error direction is chosen rather than accidental:
+a revision that fills a hole *and* shortens the paragraph around it is reported and costs one line
+the author dismisses, while a loss that goes unreported costs the paper.
 
 ## The scaffold
 
