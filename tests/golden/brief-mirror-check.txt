@@ -8,6 +8,8 @@
   originating slot children       PASS
   annotations (gating)            PASS
   unfilled skeleton slot          PASS
+  bare holes                      PASS
+  workflow phrases                PASS
   chain bookkeeping               PASS
   debt precedence                 PASS
   em dashes (threshold 0)         PASS — 0
@@ -18,7 +20,7 @@
   sentence length                 mean 10.1, CV 0.26, 0% over 35 words (7 sentences)
   locality test                   2 units, 2 slots, 1 cross-unit edge (`D1` results→availability)
 
-  13 pass, 0 fail, 0 out of scope, 6 reported
+  15 pass, 0 fail, 0 out of scope, 6 reported
   → NOT a claim that this document is finished
 
   manifest — no open annotations

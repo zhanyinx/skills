@@ -288,6 +288,37 @@ class TestWhatShips:
         assert SCRIPT.exists()
         assert SCRIPT.parent.parent.name == "render-paper"
 
+    def test_it_holds_no_paper_specific_text(self):
+        """The renderer holds no paper's name, no section of one, and no phrase
+        only one manuscript would contain — which is what lets the two residue
+        lints be word lists rather than a per-paper configuration file.
+
+        Read as a shipped artifact, the way the stdlib-only check above reads
+        it. The words are drawn from the corpus this design was calibrated on
+        and from the fixture papers: if any of them ever appears here, some
+        paper's text has leaked into the generator.
+
+        Note what is *not* on this list, and why. `karyotype`, `thymidine
+        kinase` and `DAPI` all appear in the script — the first two naming the
+        notation the bare-hole list is known to reject, the third as an example
+        in the overlap instrument. Those are general facts about biomedical
+        prose, which is exactly the kind a paper-agnostic renderer may know.
+        What it may not know is *which* paper: its name, its metric, or a
+        sentence out of it.
+        """
+        from conftest import SCRIPT
+
+        text = SCRIPT.read_text()
+
+        for leaked in (
+            "MIRAGE",
+            "Dice",
+            "confocal",
+            "paraformaldehyde",
+            "spinning-disk",
+        ):
+            assert leaked not in text
+
 
 class TestProseOutsideEverySlot:
     def test_prose_before_a_source_file_s_first_anchor_is_a_hard_error(self, render):
