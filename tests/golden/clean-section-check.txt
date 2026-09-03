@@ -20,8 +20,9 @@
   subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  supersession diff               not a supersession — no `--supersedes` ref
 
-  12 pass, 0 fail, 8 out of scope, 2 reported
+  12 pass, 0 fail, 8 out of scope, 3 reported
   → NOT a claim that this section is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit

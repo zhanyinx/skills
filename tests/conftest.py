@@ -82,3 +82,49 @@ def golden():
         return (GOLDEN / name).read_text()
 
     return read
+
+
+# Every setting a commit needs, supplied per invocation rather than written into
+# the repository: the tests must produce the same commit whatever the machine's
+# own git configuration says, and `add -f` is what keeps a global excludes file
+# from quietly leaving a fixture file out of the tree the old render reads.
+GIT_SETTINGS = (
+    "-c",
+    "user.name=render-paper tests",
+    "-c",
+    "user.email=tests@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+)
+
+
+@pytest.fixture
+def versioned(paper):
+    """A fixture paper in a git repository of its own, committed once, and the
+    commit ref that first state closed at.
+
+    The supersession diff reconstructs the old side from git, so the old side
+    here is a real commit rather than a second directory on disk: the fixture
+    commits the paper as drafted, and the test then revises the working tree the
+    way a `revise` ticket does.
+    """
+
+    def make(case):
+        root = paper(case)
+        git(root, "init", "-q")
+        git(root, "add", "-A", "-f")
+        git(root, "commit", "-qm", "the draft ticket closed here")
+        return root, git(root, "rev-parse", "HEAD").strip()
+
+    return make
+
+
+def git(root, *args):
+    """One git command inside a paper, or an assertion failure naming it."""
+    proc = subprocess.run(
+        ["git", "-C", str(root), *GIT_SETTINGS, *args],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, "git %s: %s" % (" ".join(args), proc.stderr)
+    return proc.stdout

@@ -21,8 +21,12 @@ beside this script.
 from __future__ import annotations
 
 import argparse
+import io
 import re
+import subprocess
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 
 EXIT_OK = 0
@@ -177,6 +181,21 @@ BIB_ENTRY = re.compile(r"@(\w+)\s*\{", re.MULTILINE)
 BIB_LINE_COMMENT = re.compile(r"^[ \t]*%.*$", re.MULTILINE)
 BIB_FIELD = re.compile(r"([A-Za-z][A-Za-z0-9_-]*)\s*=\s*")
 BIB_PATH = "references.bib"
+
+# The supersession diff's two declared conventions. `DRAFTS_DIR` is where a
+# unit's prose lives before promotion, so it is where the old side of a
+# post-promotion revision is found; it is named here because this is the only
+# check that looks for it.
+#
+# The drop bar is **a constant and not a caller's option**, unlike the em-dash
+# threshold. The row cannot gate, so a knob would buy an effort nothing it
+# cannot already have by reading the two counts the row always prints — and one
+# more input on a revision's interface is one more thing to mistake for a
+# keep-list.
+GIT = "git"
+DRAFTS_DIR = "drafts"
+SUPERSESSION_DROP_PERCENT = 25
+RENDERED_HEADING = re.compile(r"^#{1,6} .*$", re.MULTILINE)
 
 # `@string`, `@preamble` and `@comment` are BibTeX machinery, not entries, so
 # they carry no citation key and are stepped over rather than refused.
@@ -3399,6 +3418,348 @@ def report_locality(paper):
     )
 
 
+# --------------------------------------------------------------------------
+# the supersession diff
+# --------------------------------------------------------------------------
+#
+# `RV4`. When a unit is re-drafted, the author learns what the revision
+# silently lost. **A diff-relative reading is the wrong instrument for a fresh
+# draft and the right one here:** for a supersession the diff is not an
+# approximation of the question, it *is* the question.
+#
+# **A finding, never a gate.** A revision that correctly removes 2,000 words,
+# because the ladder amendment deleted the rung those words served, must not be
+# blocked by its own success. Two mechanisms keep it that way rather than one
+# rule: the row sits in the reported tier, which `run_gate` gives no bucket the
+# exit code reads, and it prints a `Number`, which is not a verdict and has no
+# `FAIL` to print.
+#
+# **There is no keep-list**, here or anywhere in the interface. A list of what
+# must not change would be written by the same agent that drops a claim, and it
+# would omit the dropped claim too, so the drop-guard is mechanical.
+
+
+class Supersession:
+    """The old side of one supersession, or the reason there is not one.
+
+    Three states, and the row prints all three: no ref was named, a ref was
+    named and its old render could not be rebuilt, or the old render itself.
+    Two of them are findings rather than errors, which is why the reason
+    travels as a string on this object instead of being raised.
+    """
+
+    def __init__(self, ref, old=None, problem=None):
+        self.ref = ref
+        self.old = old
+        self.problem = problem
+
+
+def supersession(ref, root, source_path, paper):
+    """The old render of this unit, rebuilt from the commit the original draft
+    ticket closed at.
+
+    Renders are ephemeral (`C7`), but the render is a **pure function of the
+    source** and git is the audit trail (`A8`): check the source out at that
+    commit and run **the same render**, at the same section anchor. Post
+    promotion one side comes from the working manuscript and the other from the
+    frozen drafts, and that is still well-defined, because `K5` guarantees
+    **anchors — not headings — are what live in the source.**
+
+    **Nothing here may raise.** The row it feeds is reported-only, so a missing
+    binary, a ref nobody kept, a tree carrying no source and a source the old
+    skeleton can no longer describe are all *findings*: they print in the row
+    and reach no exit code. The breadth of the `except` is the point rather
+    than an oversight — enumerating the ways git and an old tree can disappoint
+    is how one of them comes to escape and refuse a render the author asked
+    for.
+    """
+    if ref is None or paper.granularity != SECTION:
+        return None
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            old_root = Path(directory).resolve()
+            _check_out(root, ref, old_root)
+            old = load_paper(
+                _old_source(old_root, root, source_path, paper.unit),
+                old_root,
+                SECTION,
+                paper.unit.id,
+                paper.em_dash_threshold,
+            )
+        return Supersession(ref, old=old)
+    except Exception as error:
+        return Supersession(ref, problem=_reason(error))
+
+
+def _check_out(root, ref, destination):
+    """The paper root as of one commit, written into `destination`.
+
+    A tar stream rather than a second worktree: `git archive` names one
+    tree-ish and touches neither the index nor the working tree, so rebuilding
+    the old side cannot disturb the render the author is waiting for.
+    """
+    prefix = _git(root, "rev-parse", "--show-prefix").decode().strip().rstrip("/")
+    stream = _git(
+        root, "archive", "--format=tar", "%s:%s" % (ref, prefix) if prefix else ref
+    )
+    with tarfile.open(fileobj=io.BytesIO(stream), mode="r|") as archive:
+        for member in archive:
+            if not member.isfile():
+                # A regular file is the only thing the render reads, so nothing
+                # else is written. A symlink or a device node would be a way
+                # out of this directory and buys the diff nothing.
+                continue
+            path = (destination / member.name).resolve()
+            if destination not in path.parents:
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(archive.extractfile(member).read())
+
+
+def _old_source(old_root, root, source_path, unit):
+    """Where this unit's prose lived at the old ref.
+
+    **The same relative path first** — every pre-promotion revision, and every
+    revision of a revision. Then `drafts/<unit>.md`, which is the one other
+    place it can be: post-promotion the working manuscript carries the unit and
+    the frozen draft carries what it superseded, and both go through the same
+    render at the same anchor.
+    """
+    try:
+        candidates = [source_path.resolve().relative_to(root.resolve())]
+    except ValueError:
+        # A `--paper` root the source does not sit under. The relative path is
+        # not a path inside the old tree at all, so only the declared drafts
+        # location is left.
+        candidates = []
+    candidates.append(Path(DRAFTS_DIR) / ("%s.md" % unit.id))
+    for candidate in candidates:
+        if (old_root / candidate).exists():
+            return old_root / candidate
+    raise HardError("the tree at this ref carries no source for `%s`" % unit.id)
+
+
+def _git(root, *args):
+    """One git command in the paper root, or the error it exited with."""
+    return subprocess.run(
+        [GIT, "-C", str(root), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    ).stdout
+
+
+def _reason(error):
+    """One line naming what went wrong, in git's own words where it has any."""
+    if isinstance(error, subprocess.CalledProcessError):
+        said = (error.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        if said:
+            return said[0].removeprefix("fatal: ")
+        return "`git %s` exited %d" % (error.cmd[3], error.returncode)
+    if isinstance(error, FileNotFoundError) and error.filename == GIT:
+        return "no `%s` on the path" % GIT
+    return str(error) or error.__class__.__name__
+
+
+def check_supersession(paper):
+    """What this revision lost, measured against the old render of one unit.
+
+    Five structural losses, in one row, because they are one question — *what
+    went missing that nobody declared?* — and an author reading the answer
+    needs the body counts beside the list to size it.
+    """
+    superseded = paper.superseded
+    if superseded is None:
+        # Not a pass: a fresh draft has no old side, and one word cannot carry
+        # checked-and-fine against never-looked.
+        return Number("not a supersession — no `--supersedes` ref")
+    if superseded.old is None:
+        return Number("old side unavailable — %s" % superseded.problem)
+
+    old = superseded.old
+    lost = (
+        _lost_headings(old, paper)
+        + _lost_figure_references(old, paper)
+        + _lost_citations(old, paper)
+        + _vanished_gates(old, paper)
+    )
+    body = _body_delta(old, paper)
+    if not lost:
+        return Number("%s, no structural loss" % body)
+    return Number("%s; %s" % (body, "; ".join(lost)))
+
+
+def _body_delta(old, new):
+    """The two body word counts, and how far the drop fell.
+
+    **The counts print on both sides of the bar**, the way every threshold in
+    this gate prints its number: the bar decides what is worth a line, never
+    what is worth measuring.
+    """
+    before, after = _body_words(old), _body_words(new)
+    text = "body %d → %d words" % (before, after)
+    if not before or before == after:
+        return text
+    percent = abs(after - before) * 100 // before
+    if after > before:
+        return "%s (up %d%%)" % (text, percent)
+    past = ""
+    if (before - after) * 100 > SUPERSESSION_DROP_PERCENT * before:
+        past = ", past the %d%% bar" % SUPERSESSION_DROP_PERCENT
+    return "%s (down %d%%%s)" % (text, percent, past)
+
+
+def _body_words(paper):
+    """How many words of body prose this unit carries.
+
+    The same text every other reported number is measured over — annotations,
+    citation groups, tables, fenced blocks and comments blanked, headings never
+    there in the first place — so the count a revision is sized by is the count
+    the rest of the table reports on.
+    """
+    return sum(len(words(scoped)) for _block, scoped in in_scope(paper))
+
+
+def _lost_headings(old, new):
+    """A heading-level block the old render carried and the new one does not.
+
+    Read off the **two renders** rather than off the two skeletons, because the
+    render is what a reader meets and the level is part of what it says: a slot
+    dropped from the tree and a slot moved to another level both take a heading
+    out of this unit's render, and `K5` puts every heading there on every pass.
+    """
+    after = _headings(new)
+    gone = [heading for heading in _headings(old) if heading not in after]
+    return ["heading lost (%s)" % _quoted(gone)] if gone else []
+
+
+def _headings(paper):
+    """Every heading line of one render, level included."""
+    return RENDERED_HEADING.findall(render_document(paper))
+
+
+def _lost_figure_references(old, new):
+    """A figure or panel reference present before and absent after.
+
+    **One class, because under `PN1` a figure and a panel are one token
+    class** — the same `@` surface, the same roster, told apart by nothing this
+    check reads. A per-class branch here would be a second opinion about which
+    of the two owns a given token.
+    """
+    gone = _tokens(old.figure_references_in_scope) - _tokens(
+        new.figure_references_in_scope
+    )
+    return ["figure reference lost (%s)" % _quoted(sorted(gone))] if gone else []
+
+
+def _lost_citations(old, new):
+    """A reference that has lost its only in-text anchor.
+
+    Absent from the unit **and** from the rest of the source, because that is
+    what the words say and both sides are in hand: a key still cited in another
+    unit costs the document no reference at all.
+
+    Its own class rather than the figure one above, because the consequences
+    differ. A figure name nothing points at is a hard error the gate already
+    carries; the reference list is built from the **cited keys** (`CT5`), so a
+    dropped key silently drops a reference and no other check looks.
+    """
+    gone = _tokens(old.citations_in_scope) - _tokens(new.citations)
+    if not gone:
+        return []
+    return ["reference lost its only anchor (%s)" % _quoted(sorted(gone))]
+
+
+def _tokens(references):
+    """Every reference in the set, as the prose wrote it — the `@` included, the
+    way every other row of this table names one."""
+    return set("@%s" % reference.key for reference in references)
+
+
+def _vanished_gates(old, new):
+    """A gate-bit annotation the old side carried, gone from the new one, and
+    gone with its prose.
+
+    **Deletion is the only closure, so *gone* alone says nothing:**
+    substituting the real value is exactly how a hole is closed, and it leaves
+    the sentence standing. What separates the closure from the loss is
+    therefore the **prose**, and the test is the one this file already uses for
+    verbatim survival — whether the paragraph that carried the hole left a run
+    of `PHRASE_WORDS` words behind. A filled hole leaves its paragraph; a
+    deleted block leaves nothing.
+    """
+    still_open = _open_gates(new)
+    surviving = _word_runs("\n".join(scoped for _block, scoped in in_scope(new)))
+    gone = []
+    for annotation in old.annotations_in_scope:
+        if not annotation.gate:
+            continue
+        if (annotation.behaviour, annotation.label) in still_open:
+            continue
+        if _traced(_carrying_paragraph(old, annotation), surviving):
+            continue
+        gone.append(annotation.token)
+    return ["gate annotation vanished unclosed (%s)" % _quoted(gone)] if gone else []
+
+
+def _open_gates(paper):
+    """Every gate-bit annotation this side still carries, by what identifies one
+    across two renders: the behaviour it renders as, and its label."""
+    return set(
+        (annotation.behaviour, annotation.label)
+        for annotation in paper.annotations_in_scope
+        if annotation.gate
+    )
+
+
+def _carrying_paragraph(paper, annotation):
+    """The paragraph the annotation's brace was written into, with the brace
+    already blanked — the paragraph as a substituted value would leave it, minus
+    the value itself.
+    """
+    for block, scoped in in_scope(paper):
+        if block.slot_id != annotation.slot_id or block.origin != annotation.origin:
+            continue
+        for text, line in paragraphs(scoped, block.raw_line):
+            if line <= annotation.line <= line + text.count("\n"):
+                return text
+    return ""
+
+
+def _traced(paragraph, surviving):
+    """Whether the prose that carried a hole is still in the revised unit."""
+    runs = _word_runs(paragraph)
+    if runs:
+        return bool(runs & surviving)
+    # Shorter than one run: a hole standing in a fragment, which the warnings
+    # channel already has its own opinion about. The honest test left is
+    # whether the few words it did carry are all still there.
+    carried = words(paragraph)
+    left = set(word for run in surviving for word in run)
+    return bool(carried) and set(carried) <= left
+
+
+def _word_runs(text):
+    """Every `PHRASE_WORDS`-long run of words in one piece of prose.
+
+    The unit of verbatim survival, at the length the overlap instrument already
+    fixed: a shorter run is two texts about one subject agreeing by accident.
+    It is its own function and not that instrument's `_windows`, which keys
+    runs by the clause they sit in — a shared span never bridges a full stop
+    there, and here the question is only whether the prose is still anywhere in
+    the unit.
+    """
+    found = words(text)
+    return set(
+        tuple(found[start : start + PHRASE_WORDS])
+        for start in range(len(found) - PHRASE_WORDS + 1)
+    )
+
+
+def _quoted(items):
+    return ", ".join("`%s`" % item for item in items)
+
+
 # Row order is this registry's order, and it is fixed: `review-paper` reports
 # the table verbatim, so the order is an interface. Rows arrive as the checks
 # behind them are built; a row is never printed without a check behind it,
@@ -3431,7 +3792,9 @@ def report_locality(paper):
 #   reported subject openings            (built)
 #   reported sentence length             (built)
 #   reported locality test               (built)
-#   reported supersession diff           supersession diff
+#   reported supersession diff           (built; the one row that is section
+#                                        granularity only, because one unit at
+#                                        a time is what a supersession is)
 #
 # The parse-tier rows built here have no entry below: a parse error means
 # nothing ran, so the table is absent rather than carrying their verdicts.
@@ -3461,6 +3824,7 @@ REGISTRY = [
     ("subject openings", REPORTED, DOCUMENT, check_subject_openings),
     ("sentence length", REPORTED, DOCUMENT, check_sentence_length),
     ("locality test", REPORTED, DOCUMENT, report_locality),
+    ("supersession diff", REPORTED, SECTION, check_supersession),
 ]
 
 # The three Tier 4 diagnostics are whole-document only, and the em-dash count
@@ -3522,6 +3886,12 @@ class Paper:
         self.granularity = granularity
         self.unit = unit
         self.em_dash_threshold = em_dash_threshold
+        # The old side of a supersession, attached by the CLI when
+        # `--supersedes` names a ref. It arrives after construction rather than
+        # as an argument because it is *another paper*, loaded by the same
+        # loader that built this one, and a constructor that could build one
+        # would be a loader that can recurse.
+        self.superseded = None
         self.slots = skeleton.subtree(unit) if unit is not None else skeleton.slots
         self.units = [unit] if unit is not None else skeleton.units
         self._prose = {}
@@ -3559,17 +3929,53 @@ class Paper:
     def workflow_phrases_in_scope(self):
         return self._in_scope(self.workflow_phrases)
 
+    @property
+    def citations_in_scope(self):
+        return self._in_scope(self.citations)
+
+    @property
+    def figure_references_in_scope(self):
+        return self._in_scope(self.figure_references)
+
     def _in_scope(self, found):
         """Anything carrying a `slot_id`, scoped to this granularity.
 
-        One implementation for all three, because "is this in scope" is one
-        fact: three copies of it is how a section render comes to gate on a
+        One implementation for all five, because "is this in scope" is one
+        fact: five copies of it is how a section render comes to gate on a
         different set than the row above it claims.
         """
         if self.granularity == DOCUMENT:
             return found
         in_scope = set(slot.id for slot in self.slots)
         return [one for one in found if one.slot_id in in_scope]
+
+
+def load_paper(source_path, root, granularity, named_unit, em_dash_threshold):
+    """One render's whole input, read from one paper root.
+
+    **The render is a pure function of the source, and this is that function's
+    argument list.** The supersession diff rebuilds the old side by calling it
+    again over the same paper checked out at an earlier commit, so a second
+    reader of these files would be a second render — and two renders of one
+    source are two things that can disagree about it.
+
+    Raises, as every parser below it does: a caller that wants a finding rather
+    than an exit code catches it.
+    """
+    paths = source_paths(source_path)
+    skeleton = parse_skeleton(root / "skeleton.md")
+    spine = parse_spine(root / "spine.md")
+    bibliography = read_bibliography(root / BIB_PATH)
+    figures = read_figures(root, skeleton)
+    source = parse_source(paths)
+    briefs = load_briefs(root, skeleton)
+    unit = None
+    if granularity == SECTION:
+        unit = derive_unit(skeleton, source.blocks, named_unit)
+    return Paper(
+        skeleton, spine, briefs, bibliography, figures, source, granularity, unit,
+        em_dash_threshold,
+    )
 
 
 def render_document(paper):
@@ -3786,6 +4192,12 @@ def run_gate(paper, mode):
     nowhere at all. That is the mechanism by which it cannot reach the exit
     code: not a rule the caller has to honour, but a bucket that is not there.
 
+    A row's `scope` is the granularity it can speak at, and `None` is both: a
+    whole-document row prints `SKIPPED` under `--section`, and the supersession
+    diff — one unit at a time, by definition — prints it over a whole document.
+    One comparison for both directions, because *can this row speak here* is
+    one question.
+
     An `ADVISORY_ON_CIRCULATE` check is the one row whose verdict depends on
     the mode: under `--circulate` its `FAIL` becomes a `WARN`, which no bucket
     accepts either, and under the two modes that answer the submit question —
@@ -3800,7 +4212,7 @@ def run_gate(paper, mode):
         label = name(paper) if callable(name) else name
         verdict = (
             Verdict.skipped()
-            if scope == DOCUMENT and paper.granularity == SECTION
+            if scope is not None and scope != paper.granularity
             else check(paper)
         )
         if check in ADVISORY_ON_CIRCULATE and mode == CIRCULATE:
@@ -3857,6 +4269,14 @@ def build_parser():
         help="the paper root; defaults to the nearest ancestor holding skeleton.md",
     )
     parser.add_argument(
+        "--supersedes",
+        default=None,
+        metavar="REF",
+        help="the commit ref the superseded draft closed at; the supersession "
+        "diff reports what this revision lost against the render at that ref, "
+        "and reports it only",
+    )
+    parser.add_argument(
         "--em-dash-threshold",
         type=threshold,
         default=EM_DASH_DEFAULT,
@@ -3906,16 +4326,9 @@ def main(argv=None):
             return scaffold(
                 source_path, parse_skeleton(root / "skeleton.md"), args.section
             )
-        paths = source_paths(source_path)
-        skeleton = parse_skeleton(root / "skeleton.md")
-        spine = parse_spine(root / "spine.md")
-        bibliography = read_bibliography(root / BIB_PATH)
-        figures = read_figures(root, skeleton)
-        source = parse_source(paths)
-        briefs = load_briefs(root, skeleton)
-        unit = None
-        if granularity == SECTION:
-            unit = derive_unit(skeleton, source.blocks, args.section)
+        paper = load_paper(
+            source_path, root, granularity, args.section, args.em_dash_threshold
+        )
     except ParseError as error:
         sys.stderr.write("render-paper: parse error — %s\n" % error)
         return EXIT_PARSE
@@ -3923,10 +4336,10 @@ def main(argv=None):
         sys.stderr.write("render-paper: %s\n" % error)
         return EXIT_HARD
 
-    paper = Paper(
-        skeleton, spine, briefs, bibliography, figures, source, granularity, unit,
-        args.em_dash_threshold,
-    )
+    # Outside the two handlers above, and deliberately: the old side of a
+    # supersession is a finding, so the way it fails is a row and never an exit
+    # code.
+    paper.superseded = supersession(args.supersedes, root, source_path, paper)
     mode = SUBMIT if args.submit else CHECK if args.check else CIRCULATE
     rows, failed = run_gate(paper, mode)
     report = (
