@@ -2,11 +2,14 @@
 #
 # Point the invoked copies of this repo's skills at the repository text.
 #
-# Skills are invoked through ~/.claude/skills/<name>, which symlinks into
-# ~/.agents/skills/<name>. This script replaces each of those install-side
-# entries with a symlink to this repository's skills/<name>, so there is exactly
-# one text per skill and an edit committed here is the edit that runs — no copy
-# step on any release.
+# Skills developed from a clone are installed at ~/.agents/skills/<name>. This
+# script replaces each of those entries with a symlink to this repository's
+# skills/<name>, so there is exactly one text per skill and an edit committed
+# here is the edit that runs — no copy step on any release.
+#
+# It manages that one directory and no other. If the skills were installed some
+# other way — `npx skills`, the Claude Code plugin marketplace — that installer
+# owns its own layout and this script does not touch it.
 #
 # Idempotent: re-running is a no-op. A real directory found in place is moved
 # aside to <name>.pre-link-backup rather than deleted, so nothing is lost.
@@ -19,6 +22,11 @@
 
 set -euo pipefail
 
+if [ "$#" -gt 1 ]; then
+  echo "usage: $0 [--dry-run]" >&2
+  exit 64
+fi
+
 dry_run=false
 case "${1:-}" in
   --dry-run) dry_run=true ;;
@@ -29,11 +37,14 @@ esac
 script_dir=$(cd "$(dirname "$0")" && pwd -P)
 repo_root=$(cd "$script_dir/.." && pwd -P)
 install_dir=${AGENT_SKILLS_DIR:-$HOME/.agents/skills}
+manifest=$repo_root/.claude-plugin/plugin.json
 
-echo "repository: $repo_root"
-echo "installing into: $install_dir"
-$dry_run && echo "(dry run — nothing will be changed)"
-echo
+status=0
+
+warn() {
+  echo "!!  $*" >&2
+  status=1
+}
 
 run() {
   if $dry_run; then
@@ -43,17 +54,30 @@ run() {
   fi
 }
 
+echo "repository: $repo_root"
+echo "installing into: $install_dir"
+$dry_run && echo "(dry run — nothing will be changed)"
+echo
+
+# The loop below only ever sees what is on disk, so a skill this plugin ships
+# but this checkout lacks would be skipped in silence. Say so instead: the usual
+# cause is having the wrong branch checked out.
+if [ -f "$manifest" ]; then
+  while IFS= read -r declared; do
+    [ -d "$repo_root/skills/$declared" ] ||
+      warn "$declared — shipped by plugin.json but missing from $repo_root/skills; wrong branch checked out?"
+  done < <(sed -n 's|.*"\./skills/\([^"]*\)".*|\1|p' "$manifest")
+fi
+
 $dry_run || mkdir -p "$install_dir"
 
-status=0
 for source_path in "$repo_root"/skills/*; do
   [ -d "$source_path" ] || continue
   name=$(basename "$source_path")
-  target="$install_dir/$name"
+  target=$install_dir/$name
 
   if [ ! -f "$source_path/SKILL.md" ]; then
-    echo "!!  $name — no SKILL.md in $source_path, skipped"
-    status=1
+    warn "$name — no SKILL.md in $source_path, skipped"
     continue
   fi
 
@@ -64,25 +88,25 @@ for source_path in "$repo_root"/skills/*; do
       continue
     fi
     echo "--> $name — relinking (was $(readlink "$target"))"
-    run rm "$target"
   elif [ -d "$target" ]; then
-    backup="$target.pre-link-backup"
+    backup=$target.pre-link-backup
     if [ -e "$backup" ]; then
-      echo "!!  $name — $backup already exists; move or remove it first"
-      status=1
+      warn "$name — $backup already exists; move or remove it first"
       continue
     fi
     echo "--> $name — installed copy moved aside to $(basename "$backup")"
     run mv "$target" "$backup"
   elif [ -e "$target" ]; then
-    echo "!!  $name — $target exists and is neither a symlink nor a directory, skipped"
-    status=1
+    warn "$name — $target exists and is neither a symlink nor a directory, skipped"
     continue
   else
     echo "--> $name — linking for the first time"
   fi
 
-  run ln -s "$source_path" "$target"
+  # -n so an existing symlink to a directory is replaced rather than descended
+  # into; -f so the swap needs no separate unlink that could fail and leave the
+  # target with neither the old copy nor the new link.
+  run ln -sfn "$source_path" "$target"
 done
 
 echo

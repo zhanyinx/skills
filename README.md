@@ -49,11 +49,11 @@ Review a piece of academic writing since a fixed point along two axes — **Fide
 
 ## Working on these skills
 
-The `SKILL.md` files in this repository are the source of truth: the copies that actually get invoked are symlinks into `skills/`, so an edit committed here is the edit that runs. To create or repair those links on a new machine:
+The `SKILL.md` files in this repository are the source of truth. If you develop the skills from a clone, `scripts/link-skills.sh` replaces each installed skill directory with a symlink to this repo's `skills/<name>`, so an edit committed here is the edit that runs — with no copy step on release:
 
 ```bash
 scripts/link-skills.sh --dry-run   # show what would change
 scripts/link-skills.sh             # link ~/.agents/skills/<name> -> skills/<name>
 ```
 
-It is idempotent, and moves any real directory it finds in place aside to `<name>.pre-link-backup` rather than deleting it.
+It is idempotent, and moves any real directory it finds in place aside to `<name>.pre-link-backup` rather than deleting it. It manages `~/.agents/skills` and nothing else — set `AGENT_SKILLS_DIR` to point it elsewhere. If you installed the skills with `npx skills` or the plugin marketplace above, that installer owns its own layout and this script isn't for you.
