@@ -65,12 +65,13 @@ The tier answers one question: **would the render emit something false?**
   anchor naming a slot the skeleton does not carry, one slot anchored twice, prose sitting outside
   every slot, a unit and its rung not pairing 1:1, an originating unit bearing children.
 - **Submit-gating** iff the render is faithful but the work is unfinished: an unfilled skeleton slot,
-  or an unfilled document title.
+  an unfilled document title, a debt the ladder never closes, a debt closed before it is opened.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
   source, an unclosed comment, a malformed `skeleton.md` or `spine.md`, a declared input that is
   missing.
-- **Reported** iff the fact is worth an author's attention and no exit code: the em-dash count and
-  the prose diagnostics. **A reported row never changes the exit code**, in any mode — see below.
+- **Reported** iff the fact is worth an author's attention and no exit code: the em-dash count, the
+  prose diagnostics, and the locality test. **A reported row never changes the exit code**, in any
+  mode — see below.
 
 ### A parse error is not a gate
 
@@ -97,13 +98,16 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   unit / rung pairing             PASS
   originating slot children       PASS
   unfilled skeleton slot          FAIL — 1 (`methods-imaging`)
+  chain bookkeeping               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  debt precedence                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   em dashes (threshold 0)         FAIL — 2 (line 26)
   single-sentence body paragraphs 0 in 0 originating units
   adversative ratio               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  4 pass, 2 fail, 4 out of scope, 1 reported
+  4 pass, 2 fail, 7 out of scope, 1 reported
   → NOT a claim that this section is finished
 ```
 
@@ -113,10 +117,14 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   between checked-and-fine and never-checked, which is why no single-word verdict is emitted anywhere.
 - A `FAIL` carries its count and what failed.
 - **A reported row carries a number instead of a verdict**, and is tallied apart from the three
-  verdicts, because a measurement is not a verdict. The one exception is the em-dash count, which is
-  measured against a threshold and so takes `PASS` or `FAIL` — and still moves no exit code.
+  verdicts, because a measurement is not a verdict. The `locality test` row prints
+  `4 units, 6 slots, 2 cross-unit edges (…)` where a gate row prints `PASS`; what to do about the
+  number is judgement the render does not hold. The one exception is the em-dash count, which is
+  measured against a threshold and so takes `PASS` or `FAIL` — and still moves no exit code. Where a
+  reported row is whole-document only, it prints `SKIPPED` like any other out-of-scope row.
 - The table closes with the counts and the line saying it is **not** a claim that the section (or the
   document) is finished. A gate with no FAILs is a statement about mechanism, never about judgement.
+  Every row is counted once, under what it printed, so the counts sum to the rows.
 - **A row is never printed without a check behind it.** The registry grows as the checks are built;
   a row with nothing behind it would read as a pass, which is the defect this table exists to kill.
 
