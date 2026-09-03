@@ -21,12 +21,10 @@ What a drafting session may emit:
 
 ## Why the session sees so little
 
-You receive **the whole claim ladder, your own brief, and the sources your own brief cites — and
-nothing else. No other unit's brief. No other unit's prose.**
-
-That is deliberate. It makes cross-section repetition something a drafting session **cannot author
-around** rather than something it is asked to avoid: a session that cannot read the protocol unit's
-prose cannot trim its own re-derivation of it, and a session that could read it would be inventing a
+The inputs step 1 lists are deliberately narrow, and the narrowness is a mechanism rather than an
+economy. It makes cross-section repetition something a drafting session **cannot author around**
+rather than something it is asked to avoid: a session that cannot read the protocol unit's prose
+cannot trim its own re-derivation of it, and a session that could read it would be inventing a
 through-line nobody handed it. The repetition stays fully visible to `assemble-paper`, which is the
 one pass that reads the whole document with the whole document in front of it, and the only unit
 permitted to cut.
@@ -132,8 +130,8 @@ When a claim needs a citation:
 ```
 
 **Inside brackets: keys and `;` separators only.** No prefixes, no suffixes, no locators, no free text
-of any kind — a bracket span in prose that is not a citation group under this grammar is a parse
-error, and the render refuses. **The source never holds a rendered citation.** Numbers, the reference
+of any kind: `[…]` is reserved for citation groups, and step 4 carries the rest of the reference
+surface. **The source never holds a rendered citation.** Numbers, the reference
 list and the venue's citation style are all render concerns: citations resolve to numbers by
 first-mention order in the assembled document, and the rendered reference list is built from the keys
 actually cited.
@@ -191,11 +189,10 @@ figure. Reordering the declaration block is an escalation to the planning ticket
 - **Interpretation never precedes the result it interprets**, and **the figure reference attaches to
   the sentence stating what is shown**, not to a trailing interpretation sentence.
 - **Removing an em dash is relation-first.** Name the relation — apposition, elaboration, contrast,
-  concession, causation — then use the construction that carries *that* relation: a relative clause or
-  paired commas for apposition, a colon for elaboration, a subordinating conjunction (`although`,
-  `whereas`, `while`) for contrast or concession, a semicolon for a balanced pair. Never
-  find-and-replace. Budget for this: on a real section it was the single most expensive act of the
-  redraft, larger than the brief rewrite and the annotation migration combined.
+  concession, causation — then use the construction that carries *that* relation, which the
+  subordination invariant below states. Never find-and-replace. Budget for this: on a real section it
+  was the single most expensive act of the redraft, larger than the brief rewrite and the annotation
+  migration combined.
 - **No uniform paragraph or section shape.** There is no mandated move sequence and no mandated
   transition sentence. Which units reach back is decided by the ladder's debt edges.
 - **No rule here may be satisfied by an unconditional transform over finished prose.** Every rule
@@ -233,6 +230,11 @@ attest to: an em dash marks a logical relation without naming it, it is exactly 
 figure reference, and as a self-attested bullet the ban was violated 98 times through six clean
 reviews. An effort may raise the bar as far as it likes, visibly, and cannot remove the gate.
 
+The row itself is **reported**: it carries `PASS` or `FAIL` against the threshold and moves no exit
+code, because gating submission is reserved to the annotation gate bit. **The block is this skill's,
+and it reads that row** — which is exactly why the count has to come from the command. A number you
+did not produce is a number you cannot round down.
+
 Invoking `--check` here duplicates no ownership: every mechanical check has one implementation in
 `render-paper`, and duplicate *invocation* of a single implementation is free.
 
@@ -263,6 +265,10 @@ slot**, post-promotion. **Never write `MANUSCRIPT.md`** — that name belongs to
 output. Update the bibliography at its declared path if one is being maintained; the render reads it
 from there and never contains it.
 
+The source is always Markdown. When the person needs the deliverable in a specific document format
+rather than plain text, that is a property of the render rather than of the source, so check for a
+relevant skill (docx, pdf) at handoff.
+
 **Annotate the ladder with what was actually drafted.** One test decides what that costs: does the
 debt still close?
 
@@ -284,22 +290,30 @@ so a clause naming one of these as a key is an unambiguous collision — the ses
 drafting** rather than merging it. Prose in `## Style` that reads as contradicting an invariant is a
 `review-paper` finding instead, because that one needs judgement and cannot be decided at load.
 
+For contrast: **Tier 1** is a mechanical gate over a countable prohibited token, and `## Style` may
+move its threshold but cannot remove the gate. **Tier 3** is preference — this person's or this
+venue's house style — and it is exactly what `## Style` is for.
+
 - **No rule in this skill may be satisfied by an unconditional transform over finished prose.** Every
   rule that removes or converts a construction requires reading what that construction was doing
-  first. This is the invariant behind step 5's last construction rule, and it binds every unit in the
-  pipeline.
-- **Subordination must remain available.** This is what makes the em-dash threshold safe to configure:
-  an effort may flip the number and can never switch off the requirement that removing a dash names
-  the relation first. A punctuation sweep that swaps a dash for a comma or a full stop destroys the
-  subordination the dash was carrying — comma and sentence break coordinate or terminate, and only
-  the colon subordinates, weakly.
+  first. A rule that can be executed by find-and-replace will be, and it binds every unit in the
+  pipeline, not only this one.
+- **Subordination must remain available.** An em dash marks a logical relation without naming it, so
+  once the relation is named, reach for the construction that carries *that* relation: a relative
+  clause or paired commas for apposition, a colon for elaboration, a subordinating conjunction
+  (`although`, `whereas`, `while`) for contrast or concession, a semicolon for a balanced pair. Read
+  that as an invariant and never as a menu — picking from the list without reading the relation is
+  the banned transform in a new costume. The list it replaced, *comma, colon, or a sentence break*,
+  took subordination to zero on a real revision pass, because comma and sentence break coordinate or
+  terminate and only the colon subordinates, weakly. This is also what makes the em-dash threshold
+  safe to configure: an effort may flip the number and can never switch off naming the relation.
 - **Convert a passive when the actor is load-bearing and hidden**, and leave it when the actor is
   irrelevant or the object is the topic. "Slides were stained" is correct; the actor is a technician
   and nobody needs them named. There is no convert-them-all default: "as a matter of course" is an
   instruction not to ask what this particular passive is doing.
 - **Interpretation never precedes the result it interprets**, and **the figure reference attaches to
-  the sentence stating what is shown** — step 5 states both as construction rules. They are the two
-  pairwise constraints that survive from a deleted four-move paragraph template: a uniformly-applied
+  the sentence stating what is shown.** These are the two pairwise constraints that survive from a
+  deleted four-move paragraph template: a uniformly-applied
   template produces identically-shaped paragraphs, and mandating a restatement of goal and method in
   every results paragraph makes the paragraph do the rung's job out loud.
 - **A unit may open by *using* what came before** — restating the proposition as a premise it now
@@ -313,9 +327,10 @@ drafting** rather than merging it. Prose in `## Style` that reads as contradicti
   to motion. This binds at planning time, where the child headings are chosen, so the surface for the
   defect never reaches a drafting session.
 
-Nothing in Tier 3 is invented here. This skill ships the stanza's **schema**, never filled values: a
-shipped default voice is one person's house style with the authorship filed off, installed on
-everyone who never edits the file.
+Nothing in Tier 3 is invented here, and **no filled Tier 3 value ships with this skill.** A shipped
+default voice is one person's house style with the authorship filed off, installed on everyone who
+never edits the file, so a preference in force always traces to the effort's `## Style` or to the
+user-level default file and never to here.
 
 ## Residual risks
 
@@ -327,10 +342,8 @@ Two facts a session should know before it starts, both measured on a real sectio
   meeting it as a blocking gate once the unit is otherwise finished.
 - **The adversative ratio moves as a *consequence* of that conversion, so nobody tunes it.** Naming
   relations produced four adversative connectives from zero with none targeted, which is why the
-  near-zero adversative count and the 98 em dashes are one defect seen from two directions. The ratio
-  is reported with no threshold and is never a gate: a floor on a rhetorical move is cleared most
-  cheaply by sprinkling `however` over paragraphs that concede nothing, and a genuinely procedural
-  Methods section concedes nothing, correctly.
+  near-zero adversative count and the 98 em dashes are one defect seen from two directions. Read the
+  number `render-paper` reports as a consequence of the relation work; never target it.
 
 ## Boundaries
 
@@ -342,9 +355,11 @@ Two facts a session should know before it starts, both measured on a real sectio
 - **Reads no other unit's prose or brief**, and writes no other unit's slot.
 - **Owns no mechanical check.** Every check invoked at the seam is `render-paper`'s single
   implementation; a mechanical rule restated here as prose would be a second, disagreeing copy.
-- **Creates annotations only as `HOLE`, `SLOT` or `SILENT`**, with the gate bit `!` where the value
-  must not reach submission. Resolving one means substituting the real value or deleting the comment:
-  there is no `RESOLVED` marker and no tombstone.
+- **Creates annotations in all three classes** — `HOLE`, `SLOT` and `SILENT`, with the gate bit `!`
+  where the value must not reach submission — **and is the only unit that may.** A review writes
+  `SILENT` alone; `assemble-paper` and the render write none. `SLOT` here is the annotation sense, a
+  venue back-matter field, not a position in the heading tree. Resolving one means substituting the
+  real value or deleting the comment: there is no `RESOLVED` marker and no tombstone.
 - **Never assembles.** Promotion into `MANUSCRIPT.working.md` and the whole-document editorial pass
   are `assemble-paper`'s, once, after every draft has closed.
 

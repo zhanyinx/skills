@@ -35,7 +35,7 @@ Based on the [wayfinder skill by Matt Pocock](https://github.com/mattpocock), wi
 
 Draft **one unit** — one top-level section and its subtree — from its brief, the claim ladder, the skeleton and the style stanza. The seam is given rather than negotiated, and a session receives the whole ladder, its own brief and the sources that brief cites and nothing else: no other unit's brief, no other unit's prose. So cross-section repetition is something a drafting session cannot author around, and it stays visible to the one pass that may cut it.
 
-It carries **construction rules only** — rules that hold while the sentence is being written, not after. Body prose, no headings at any level, every figure, panel and citation by stable name, and anything unverifiable written as a hole carrying the gate bit rather than a plausible-sounding placeholder. It invokes `render-paper` at each seam, where the em-dash count blocks the seam, and reviews **the render** rather than the annotated source.
+It carries **construction rules only** — rules that hold while the sentence is being written, not after. Body prose, no headings at any level, every figure, panel and citation by stable name, and anything unverifiable written as a hole carrying the gate bit rather than a plausible-sounding placeholder. It invokes `render-paper` at each seam, treats an em-dash count over the threshold as blocking that seam, and reviews **the render** rather than the annotated source.
 
 ### review-paper
 
