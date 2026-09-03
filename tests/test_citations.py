@@ -163,6 +163,21 @@ def test_a_bracket_span_wrapping_lines_is_still_one_span(paper, run_in):
     assert "author to supply: the registration arm" in result.report
 
 
+def test_an_email_address_is_not_a_narrative_citation(paper, run_in):
+    """The `@` must open the token. A corresponding-author line is ordinary
+    prose, and reading its address as a key would hard-error the paper against
+    a citation nobody wrote."""
+    live = paper(CASE)
+    rewrite(
+        live,
+        "The pipeline runs as five stages",
+        "Correspondence to author@example.org. The pipeline runs as five stages",
+    )
+    result = run_in(live, "MANUSCRIPT.working.md", "--circulate")
+    assert result.exit_code == 0, result.report
+    assert "author@example.org" in result.document
+
+
 # --------------------------------------------------------------------------
 # the bibliography
 # --------------------------------------------------------------------------

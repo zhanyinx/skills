@@ -87,7 +87,11 @@ RUNG_ID = re.compile(r"^R\d+$")
 # The trailing character may not be punctuation, so `@smith2020.` ends a
 # sentence rather than swallowing the full stop into the key.
 IDENTIFIER = r"[A-Za-z0-9_](?:[A-Za-z0-9_:.#$%&+?<>~/-]*[A-Za-z0-9_])?"
-REFERENCE = re.compile(r"@(%s)" % IDENTIFIER)
+
+# The `@` must open the token. Without that guard the `@` inside an author's
+# email address reads as a narrative citation, and a corresponding-author line
+# in the back matter hard-errors against a key nobody wrote.
+REFERENCE = re.compile(r"(?<![\w@])@(%s)" % IDENTIFIER)
 CITATION_GROUP = re.compile(r"\[\s*@%s(?:\s*;\s*@%s)*\s*\]" % (IDENTIFIER, IDENTIFIER))
 BRACKET_SPAN = re.compile(r"\[[^\[\]]*\]", re.DOTALL)
 
@@ -102,8 +106,8 @@ FIGURE_PREFIX = "fig:"
 # than numbering a key an author wrote inside a hole.
 GAP_TOKEN = r"⟦[^⟧]*⟧"
 CITATION_TOKEN = re.compile(
-    r"(?P<gap>%s)|(?P<group>%s)|(?P<bare>@%s)"
-    % (GAP_TOKEN, CITATION_GROUP.pattern, IDENTIFIER),
+    r"(?P<gap>%s)|(?P<group>%s)|(?P<bare>%s)"
+    % (GAP_TOKEN, CITATION_GROUP.pattern, REFERENCE.pattern),
     re.DOTALL,
 )
 
