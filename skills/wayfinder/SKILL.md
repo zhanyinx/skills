@@ -22,6 +22,8 @@ The map is a single issue on this repo's issue tracker, labelled `wayfinder:map`
 
 The map is an **index**, not a store. It lists the decisions made and points at the tickets that hold their detail; a decision lives in exactly one place — its ticket — so the map never restates it, only gists it and links.
 
+**The map records decisions, never recomputable state.** Anything that is a function of the artifacts as they stand — a verdict, a count, a check that two lists still correspond — is re-runnable in a second, so it is not recorded here at all. **Asserting a *document property* in the map is banned outright**: nothing revalidates a recorded property, so it goes stale in silence, in the one view every session reads while it is orienting. A real map recorded two such properties as settled fact and both were false.
+
 **Where the map, its child tickets, blocking, and frontier queries physically live is tracker-specific.** The issue tracker should have been provided to you — run `/setup-matt-pocock-skills` if not. Consult the tracker doc's "Wayfinding operations" section for how _this_ repo expresses them. If no tracker has been provided, default to the local-markdown tracker.
 
 ### The map body
@@ -39,13 +41,13 @@ The whole map at low resolution, loaded once per session. Open tickets are **not
 
 ## Style
 
-<voice/terminology/framing rules every draft must follow — inline if short, or a link to a
-style file if long (venue formatting, house terminology, framing conventions). Empty/omit
-if the effort has no drafting tickets.>
+<keyed deltas against the drafting skill's key set, plus additive prose>
 
 ## Decisions so far
 
 <!-- the index — one line per closed ticket: enough to judge relevance, then zoom the link for the detail the ticket holds -->
+
+<!-- EXCEPT `draft` and `revise`, which are keyed by **unit**: exactly one line per unit, always current. A `revise` ticket's line takes the original's slot — nothing is lost, the superseded ticket stays reachable through the `revise` ticket's own **Supersedes** pointer -->
 
 - [<closed ticket title>](link) — <one-line gist of the answer>
 
@@ -57,6 +59,10 @@ if the effort has no drafting tickets.>
 
 <!-- see "Out of scope": work ruled beyond the destination; closed, never graduates -->
 ```
+
+A map may carry additional `##` sections required by the domain skill its `## Notes` names. The domain skill owns their templates and their contents; wayfinder owns only the requirement that a declared section is instantiated.
+
+`## Style` is the one such section shipped by name above, because holding every draft to it is a step in this skill's own loop. An effort with no drafting tickets has no domain skill declaring it and leaves it out.
 
 ### Tickets
 
@@ -122,6 +128,8 @@ Every ticket is either **HITL** — human in the loop, worked *with* a human who
 
   **A `revise` may not be satisfied by an unconditional transform.** A migration is not filed as a sweep; it is per-unit, relation-first work.
 
+  **Its map index line takes the original's slot** — the index is keyed by unit for both types, so a revision replaces the line it falsifies rather than sitting beside it.
+
 **Whole-piece review.** A `draft` effort should include one `task`-labeled ticket, blocked on every `draft` ticket closing, that runs `/assemble-paper` — promotion plus the one editorial pass, once and irreversibly — then `/render-paper`, then `/review-paper` over the assembled whole rather than a single unit. Cross-references and cross-section contradictions are a different question than any one unit's local check, and only surface once everything is in place — this is the pass where the whole-document checks are **in scope** rather than printing `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`. It is also where a `task` ticket re-homing a load-bearing gap belongs, blocking this ticket rather than the `draft` ticket that found it.
 
 ## Fog of war
@@ -155,9 +163,18 @@ User invokes with a loose idea.
 
 1. **Name the destination.** Run a `/grilling` and `/domain-modeling` session to pin down what this map is finding its way to — the spec, decision, or change. The destination fixes the scope, so it's settled first.
 2. **Map the frontier.** Grill again, **breadth-first** this time: fan out across the whole space rather than deep on any one thread, surfacing the open decisions and the first steps takeable now. **If this surfaces no fog** — the way to the destination is already clear, the whole journey small enough for one session — you don't need a map. Stop and ask the user how they'd like to proceed.
-3. **Create the map** (label `wayfinder:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into **Not yet specified**.
+3. **Create the map** (label `wayfinder:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into **Not yet specified** — and **instantiate every `##` section the domain skill named in `## Notes` declares.** A map missing a section its domain skill reads is a **charting defect**, not a drafting one. Leave a declared section empty rather than omitting it: empty is a state a reader can announce, absent is not.
 4. **Create the tickets you can specify now** as child issues of the map — then wire blocking edges in a **second pass** (issues need ids before they can reference each other). Wiring sorts them into the frontier and the blocked; everything you can't yet specify stays in the fog — the **Not yet specified** section.
 5. Stop — charting the map is one session's work; do not also resolve tickets.
+
+### The two-map pattern (for efforts that carry execution)
+
+An effort that carries execution runs as **two maps**, and their blocking edges mean different things. An effort that reinvents the pattern gets that difference wrong, and it is not derivable from the phase names.
+
+- **The planning map** yields the settled inputs — for a drafting effort, the skeleton, the ladder, and one brief per unit. Its edge semantics: the **skeleton ticket blocks the ladder ticket**, and **the ladder ticket blocks every brief ticket** (a brief cannot be written against a rung that does not exist).
+- **The draft map** yields the deliverable itself. Its edge semantics: **the ladder's debt edges *are* the blocking edges.** A unit that closes a debt is blocked by the unit that opens it. The frontier is therefore derived from the argument, and every parallelism the argument permits survives.
+
+The draft map's `## Notes` carries only what is genuinely per-effort — the settled inputs and their paths. It does not restate the `draft` ticket type, the source/output file contract, the ordering, or the framing rules: those are skill-level, and framing rules belong in `## Style`. In a real draft map, five of seven `## Notes` blocks were skill-level decisions and one re-transcribed this skill's own `draft` type — a copy that was already wrong, because it turned on a verdict word abolished since.
 
 ### Work through the map
 
@@ -165,8 +182,8 @@ User invokes with a map (URL or number). A ticket is **optional** — without on
 
 1. Load the **map** — the low-res view, not every ticket body.
 2. Choose the ticket. If the user named one, use it. Otherwise take the first frontier ticket in order. **Claim it**: assign it to yourself before any work.
-3. Resolve it — **zoom as needed**: fetch the full body of any related or closed ticket on demand; invoke the skills the `## Notes` block names, and hold every draft to the map's `## Style` section where one exists. If in doubt, use `/grilling` and `/domain-modeling`.
-4. Record the resolution: post the answer as a **resolution comment**, **close** the issue, and **append a context pointer** to the map's Decisions-so-far.
+3. Resolve it — **zoom as needed**: fetch the full body of any related or closed ticket on demand; invoke the skills the `## Notes` block names, and hold every draft to the map's `## Style` section. If in doubt, use `/grilling` and `/domain-modeling`.
+4. Record the resolution: post the answer as a **resolution comment**, **close** the issue, and **append a context pointer** to the map's Decisions-so-far — except for a `draft` or `revise` ticket, whose line is keyed by **unit**: write that unit's single line, **replacing** whatever stood in its slot.
 5. Add newly-surfaced tickets (create-then-wire); graduate any fog the answer has made specifiable, clearing each graduated patch from **Not yet specified** so it lives only as its new ticket. If the answer reveals a ticket — this one or another — sits beyond the destination, **rule it out of scope** rather than resolving it on the route. If the decision invalidates other parts of the map, update or delete those tickets.
 
 The user may run unblocked tickets in parallel, so expect other sessions to be editing the tracker concurrently.
