@@ -1,9 +1,17 @@
   skeleton / spine grammar  PASS
   source grammar            PASS
+  brace grammar             PASS
   slot integrity            PASS
   unit / rung pairing       PASS
   originating slot children PASS
+  annotations (gating)      PASS
   unfilled skeleton slot    PASS
 
-  6 pass, 0 fail, 0 out of scope
+  8 pass, 0 fail, 0 out of scope
   → NOT a claim that this document is finished
+
+  manifest — 1 open annotation, 0 carrying the gate bit
+  → f(source), recomputed at every render; deletion is the only closure
+
+  @author
+       SILENT  MANUSCRIPT.working.md:10  confirm the tool list against the review before submission

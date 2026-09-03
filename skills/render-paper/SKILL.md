@@ -24,6 +24,17 @@ Both are declared inputs at the paper root, beside the source:
 `render-paper` is their only parser, which is why it documents their formats. **No skill owns either
 file.** A planning ticket creates each; a drafting session may amend its own slot only.
 
+## The channel it reads inside the source
+
+[The annotation channel](ANNOTATION-CHANNEL.md) — `{{ … }}` **must** appear in the render, an HTML
+comment **must never** — plus the manifest, the gate bit, and the creation-rights grid. Same reason
+the two file formats are documented here: `render-paper` is the channel's only parser.
+
+```
+{{ [!] [SLOT:] [@owner] <label> }}      ! is the gate bit; bare is a HOLE; SLOT: is a venue field
+<!-- !@owner <label> -->                SILENT; in the manifest iff it opens with `!` or `@`
+```
+
 ## Modes
 
 ```
@@ -59,11 +70,15 @@ The tier answers one question: **would the render emit something false?**
 - **Hard error, both modes** iff the emitted document is not the document the source describes: an
   anchor naming a slot the skeleton does not carry, one slot anchored twice, prose sitting outside
   every slot, a unit and its rung not pairing 1:1, an originating unit bearing children.
-- **Submit-gating** iff the render is faithful but the work is unfinished: an unfilled skeleton slot,
-  or an unfilled document title.
+- **Submit-gating** iff the render is faithful but the work is unfinished: an open annotation
+  carrying the gate bit, an unfilled skeleton slot, or an unfilled document title.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
-  source, an unclosed comment, a malformed `skeleton.md` or `spine.md`, a declared input that is
-  missing.
+  source, an unclosed comment, a malformed or unclosed brace, a malformed `skeleton.md` or
+  `spine.md`, a declared input that is missing.
+
+Two lints sit under all three tiers and move **no** exit code: a brace label over 80 characters, and
+a bare brace standing alone in its own block. They print in a `warnings` block on stderr. A hard cap
+on either was rejected — it over- and under-fires at once.
 
 ### A parse error is not a gate
 
@@ -86,14 +101,27 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
 
   skeleton / spine grammar  PASS
   source grammar            PASS
+  brace grammar             PASS
   slot integrity            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   unit / rung pairing       PASS
   originating slot children PASS
+  annotations (gating)      PASS
   unfilled skeleton slot    FAIL — 1 (`methods-imaging`)
 
-  4 pass, 1 fail, 1 out of scope
+  6 pass, 1 fail, 1 out of scope
   → NOT a claim that this section is finished
+
+  manifest — 1 open annotation, 0 carrying the gate bit
+  → f(source), recomputed at every render; deletion is the only closure
+
+  @author
+       SLOT    MANUSCRIPT.working.md:50  data availability statement
 ```
+
+**The manifest follows the table under every mode, `--check` included**, and it is printed whether
+or not it is empty — an absent manifest reads as nobody having looked. The **gate** is scoped to the
+granularity the way every row is; the **manifest is not**, because it is `f(source)` and an absolute
+input to a diff-relative judgement axis. See [the channel](ANNOTATION-CHANNEL.md).
 
 - **Row order is the check registry's order and is fixed**, so the table is diffable across runs.
 - **Three verdicts only:** `PASS`, `FAIL`, and `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`. A check
@@ -105,7 +133,7 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
 - **A row is never printed without a check behind it.** The registry grows as the checks are built;
   a row with nothing behind it would read as a pass, which is the defect this table exists to kill.
 
-The two parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
+The three parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
 failure suppresses the table.
 
 ## Construction duties
@@ -118,25 +146,33 @@ failure suppresses the table.
    intentions.
 2. **Strip the author-facing comment channel by syntax** — every HTML comment, as a class, never by
    a marker string. Parsing is span-based, never line-anchored: a comment may wrap any number of
-   lines. The renderer emits no comment of its own, so there is no such thing as a comment the render
-   preserves. Inside a fenced code block nothing is parsed at all — not a comment, not an anchor, not
-   a heading — because a source showing anchor syntax in a fence is showing it, not using it.
+   lines, and so may a brace. The renderer emits no comment of its own, so there is no such thing as
+   a comment the render preserves. Inside a fenced code block nothing is parsed at all — not a
+   comment, not a brace, not an anchor, not a heading — because a source showing anchor syntax in a
+   fence is showing it, not using it.
 3. **Concatenate**, pre-promotion only. Post-promotion the source is already one document.
 4. **Mark the output as generated.** Every render opens with a front-matter banner naming the render
    as output. It is not a comment, because a render that emits its own comments is how a comment
    leaks into reader-facing text.
-5. **Never silently strip a gap.** An unfilled slot renders as `⟦HOLE: prose for <slot id>⟧` and an
-   unfilled title as `⟦HOLE: the document title⟧` — a uniform, greppable token. Silently dropping one
-   would turn a flagged gap into an unsupported claim the author never learns about. A **parent** slot
-   is the exception that is not a gap: its own prose is permitted rather than owed, so a parent with
+5. **Never silently strip a gap.** Every gap comes out as one uniform, greppable token, so one grep
+   finds them all: `⟦HOLE: <label>⟧` for a brace and for an unfilled slot or title alike, and
+   `⟦SLOT: <label>⟧` for a venue field. Silently dropping one would turn a flagged gap into an
+   unsupported claim the author never learns about — strip the token and the sentence is
+   ungrammatical, drop the clause and an unsupported assertion ships. A **parent** slot is the
+   exception that is not a gap: its own prose is permitted rather than owed, so a parent with
    children renders its heading and lets the children carry the prose.
+6. **Emit the manifest.** Every open annotation, grouped by `@owner` so it is sendable, recomputed
+   from the source on every render so it cannot go stale.
 
 ## What it must not do
 
 - Hold any paper-specific text. No bibliography, no section names, no per-paper fixes. Every
   judgement fix is written back into the **source**, never encoded in the generator: a fix that lives
   in the generator regresses the moment the generator stops being run.
-- Create any annotation **in the source**. It renders a gap as a token; it never writes one.
+- Create any annotation **in the source**. It renders a gap as a token; it never writes one. The
+  creation-rights grid is in [the channel](ANNOTATION-CHANNEL.md): `write-paper` may create all
+  three behaviours, `review-paper` may create `SILENT` only, and the render and the assembler create
+  none.
 - Hold any spine authority beyond the mechanical bookkeeping walk.
 - Judge anything. Every check is decidable by parse; anything else belongs to a judgement axis.
 
@@ -147,7 +183,10 @@ a word budget all key on, 1:1. *slot* — a section position in the heading tree
 collision:** in the annotation channel, `SLOT:` inside braces marks a *venue back-matter field*. Two
 different concepts, one word; every passage where both could apply qualifies which is meant.
 *originating* / *non-originating* — a unit that opens a debt, versus one that closes, restates or
-inventories.
+inventories. *HOLE* / *SLOT* / *SILENT* — what the reader sees, and the only render-behaviour
+vocabulary there is; *the gate bit* — whether an annotation blocks `--submit`, independent of what
+the reader sees. **There is no kind enum**: the two axes plus the free-text `@owner` carry
+everything, and `@owner` is the one that makes the manifest sendable.
 
 ## Tests
 

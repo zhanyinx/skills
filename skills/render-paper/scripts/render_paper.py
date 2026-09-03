@@ -13,7 +13,8 @@ Exit codes are the contract every other unit reads:
     2   at least one hard error, or the renderer cannot run
     3   a parse error — nothing ran, so no table is printed
 
-See `SKILL.md`, `SKELETON-FORMAT.md` and `SPINE-FORMAT.md` beside this script.
+See `SKILL.md`, `SKELETON-FORMAT.md`, `SPINE-FORMAT.md` and `ANNOTATION-CHANNEL.md`
+beside this script.
 """
 
 from __future__ import annotations
@@ -44,7 +45,18 @@ SKIPPED = "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
 DOCUMENT = "document"
 SECTION = "section"
 
+# The annotation channel's two axes, and nothing else. There is no kind enum:
+# render behaviour is one axis, the gate bit is the other, and the one
+# dimension they do not carry — who resolves it — is the free-text `@owner`.
+HOLE = "HOLE"
+VENUE_SLOT = "SLOT"  # `SLOT:` inside braces is a venue field, never a section
+SILENT = "SILENT"
+
+DEFAULT_OWNER = "@author"
+LABEL_ADVISORY = 80
+
 NAME_WIDTH = 26
+BEHAVIOUR_WIDTH = 6
 INDENT = "  "
 
 SLOT_ID = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
@@ -59,6 +71,28 @@ RUNG_FIELD = re.compile(r"^-\s+([a-z-]+)\s*:\s*(.*?)\s*$")
 OPENS_VALUE = re.compile(r"^(D\d+)\s+\(closed by (R\d+)\)\s+—\s+(\S.*)$")
 DEBT_ID = re.compile(r"^D\d+$")
 RUNG_ID = re.compile(r"^R\d+$")
+
+BRACE_OPEN = re.compile(r"\{\{")
+BRACE_CLOSE = re.compile(r"\}\}")
+SLOT_INTENT = re.compile(r"^slot\s*:", re.IGNORECASE)
+SLOT_MARK = re.compile(r"^SLOT:")
+OWNER = re.compile(r"^@\S+")
+REASONING_KEY = re.compile(r"^\{\{(.*?)\}\}\s*:(.*)$", re.DOTALL)
+SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+
+# The directional-word list is short, dumb and conservative, the way the other
+# residue lints are, so the renderer stays paper-agnostic. It buys one manifest
+# line, never a gate of its own: the direction inherits the hole's bit.
+DIRECTIONAL = re.compile(
+    r"\b("
+    r"raise[sd]?|raising|lower(?:s|ed|ing)?|rise[sn]?|rose|fell|fall(?:s|en)?|"
+    r"increase[sd]?|increasing|decrease[sd]?|decreasing|improve[sd]?|improving|"
+    r"reduce[sd]?|reducing|gain(?:s|ed)?|drop(?:s|ped)?|exceed(?:s|ed)?|"
+    r"outperform(?:s|ed)?|higher|better|worse|greater|smaller|more|fewer|less|"
+    r"faster|slower|stronger|weaker"
+    r")\b",
+    re.IGNORECASE,
+)
 
 BANNER = (
     "---\n"
@@ -443,9 +477,42 @@ class Block:
         self.prose = ""
 
 
+class Annotation:
+    """One author-facing annotation, on both axes at once.
+
+    `behaviour` decides what the reader sees — a `HOLE` renders as a
+    conspicuous token, a `VENUE_SLOT` as a visible placeholder, a `SILENT` as
+    nothing at all. `gate` decides whether it blocks `--submit`. The two are
+    independent, which is what lets a verify flag be SILENT and still refuse a
+    submission.
+    """
+
+    def __init__(self, behaviour, gate, owner, label, origin, line, slot_id):
+        self.behaviour = behaviour
+        self.gate = gate
+        self.owner = owner or DEFAULT_OWNER
+        self.label = label
+        self.origin = origin
+        self.line = line
+        self.slot_id = slot_id
+        self.reasoning = None
+        self.direction = None
+
+    @property
+    def where(self):
+        return "%s:%d" % (self.origin.name, self.line)
+
+    @property
+    def token(self):
+        """What the reader sees. Uniform across both brace behaviours, so one
+        grep finds every gap in a circulated paper."""
+        return "⟦%s: %s⟧" % (self.behaviour, self.label)
+
+
 def parse_source(paths):
     """Read the source and return the anchored blocks in the order they appear,
-    plus any prose sitting outside every slot.
+    the prose sitting outside every slot, the annotation manifest, and the
+    advisory warnings.
 
     One file post-promotion, or every section source pre-promotion — the blocks
     concatenate, and the render orders them by the skeleton rather than by the
@@ -453,47 +520,393 @@ def parse_source(paths):
     """
     blocks = []
     stray = []
+    annotations = []
+    warnings = []
     for path in paths:
-        found, outside = _parse_one_source(path.read_text(), path)
+        found, outside, marked, advised = _parse_one_source(path.read_text(), path)
         blocks.extend(found)
         stray.extend(outside)
-    return blocks, stray
+        annotations.extend(marked)
+        warnings.extend(advised)
+    return blocks, stray, annotations, warnings
 
 
 def _parse_one_source(text, path):
-    """One source file: strip the author-facing comment channel, and split what
-    is left at the anchors.
+    """One source file: read the annotation channel, strip every comment, and
+    split what is left at the anchors.
 
-    Parsing is span-based, never line-anchored: a comment may wrap across any
-    number of lines, and in the corpus this design was calibrated on, 13 of 30
-    annotations did.
+    Parsing is span-based, never line-anchored: an annotation may wrap across
+    any number of lines, and in the corpus this design was calibrated on, 13 of
+    30 did, one of them over six lines. A line-anchored parser is the thing an
+    implementer assumes away.
     """
     fenced = _fenced_spans(text)
     _refuse_unclosed_comment(text, path, fenced)
     _refuse_headings(text, path, fenced)
 
+    # Braces are read off the text with every comment blanked to same-length
+    # whitespace, so a reasoning comment's `{{label}}` join key is not itself
+    # an annotation and every offset still points at the real source.
+    masked = _mask_comments(text, fenced)
+    spans = _brace_spans(masked, path, fenced)
+    bare = _blank_spans(masked, spans)
+
     blocks = []
     stray = []
+    annotations = []
+    advisories = []
+    keyed = {}
     current = None
     pending = []
     cursor = 0
+    braces = []
 
     for match in COMMENT.finditer(text):
         if _inside(fenced, match.start()):
             continue  # inside a fence it is literal text, not a comment
-        pending.append(text[cursor : match.start()])
+        taken = _chunk(spans, cursor, match.start())
+        pending.append(_substitute(text, cursor, match.start(), taken))
+        braces.extend(taken)
+        annotations.extend(_attach(taken, current, masked, bare, advisories))
         cursor = match.end()
         slot_id = _anchor_slot_id(match, text, path)
-        if slot_id is None:
-            continue  # every comment is stripped, as a class
-        _attribute(_tidy("".join(pending)), current, path, stray)
-        pending = []
-        current = Block(slot_id, path, _line_of(text, match.start()))
-        blocks.append(current)
+        if slot_id is not None:
+            _attribute(_tidy("".join(pending)), current, path, stray)
+            pending = []
+            current = Block(slot_id, path, _line_of(text, match.start()))
+            blocks.append(current)
+            continue
+        # Every comment is stripped, as a class. Three of them are then read
+        # again for the manifest, and the rest are tracked nowhere.
+        entry = _read_comment(match, text, path, current, keyed)
+        if entry is not None:
+            annotations.append(entry)
 
-    pending.append(text[cursor:])
+    taken = _chunk(spans, cursor, len(text))
+    pending.append(_substitute(text, cursor, len(text), taken))
+    braces.extend(taken)
+    annotations.extend(_attach(taken, current, masked, bare, advisories))
     _attribute(_tidy("".join(pending)), current, path, stray)
-    return blocks, stray
+
+    _join_reasoning(braces, keyed, path, advisories)
+    advisories.sort(key=lambda advisory: advisory[0])
+    return blocks, stray, annotations, [text for _, text in advisories]
+
+
+def _chunk(spans, start, end):
+    """The brace spans lying in `[start, end)`, in source order."""
+    return [span for span in spans if start <= span[0] < end]
+
+
+def _substitute(text, start, end, spans):
+    """The prose of one chunk, with every brace replaced by its render token.
+
+    A HOLE and a SLOT both come out as a token; nothing is ever dropped,
+    because stripping a gap silently converts a flagged hole into an
+    unsupported claim the author never learns about.
+    """
+    out = []
+    cursor = start
+    for span_start, span_end, annotation in spans:
+        out.append(text[cursor:span_start])
+        out.append(annotation.token)
+        cursor = span_end
+    out.append(text[cursor:end])
+    return "".join(out)
+
+
+def _attach(spans, block, masked, bare, advisories):
+    """Give each brace in a chunk the slot it sits under, and run the two
+    advisory lints over it."""
+    found = []
+    for span_start, span_end, annotation in spans:
+        annotation.slot_id = None if block is None else block.slot_id
+        if annotation.behaviour == HOLE:
+            annotation.direction = _direction(bare, span_start, span_end)
+            if _block_alone(masked, span_start, span_end):
+                advisories.append(
+                    (
+                        annotation.line,
+                        "%s: the bare brace `{{ %s }}` stands alone in its own "
+                        "block, so it is probably a `SLOT:`"
+                        % (annotation.where, annotation.label),
+                    )
+                )
+        if len(annotation.label) > LABEL_ADVISORY:
+            advisories.append(
+                (
+                    annotation.line,
+                    "%s: the label runs to %d characters, over the "
+                    "%d-character advisory limit — reasoning belongs in a keyed "
+                    "comment beside the brace"
+                    % (annotation.where, len(annotation.label), LABEL_ADVISORY),
+                )
+            )
+        found.append(annotation)
+    return found
+
+
+def _brace_spans(masked, path, fenced):
+    """Every `{{ … }}` span outside every comment and fence, as one linear walk
+    over the `{{` and `}}` tokens.
+
+    The walk, rather than a regex, is what lets an unclosed brace name the
+    brace that never closed instead of the next one along. A malformed brace is
+    a parse error and not a gate: it has no behaviour and no gate bit to
+    honour, so it sits in the same category as an unclosed comment.
+    """
+    tokens = [
+        (match.start(), True)
+        for match in BRACE_OPEN.finditer(masked)
+        if not _inside(fenced, match.start())
+    ]
+    tokens += [
+        (match.start(), False)
+        for match in BRACE_CLOSE.finditer(masked)
+        if not _inside(fenced, match.start())
+    ]
+    tokens.sort()
+
+    spans = []
+    opened_at = None
+    for offset, opening in tokens:
+        if opening and opened_at is not None:
+            raise ParseError(
+                "%s:%d: unclosed brace `{{`" % (path.name, _line_of(masked, opened_at))
+            )
+        if opening:
+            opened_at = offset
+        elif opened_at is None:
+            raise ParseError(
+                "%s:%d: unmatched `}}`" % (path.name, _line_of(masked, offset))
+            )
+        else:
+            spans.append(
+                (
+                    opened_at,
+                    offset + 2,
+                    _brace_annotation(masked, opened_at, offset + 2, path),
+                )
+            )
+            opened_at = None
+    if opened_at is not None:
+        raise ParseError(
+            "%s:%d: unclosed brace `{{`" % (path.name, _line_of(masked, opened_at))
+        )
+    return spans
+
+
+def _brace_annotation(text, start, end, path):
+    """One brace, read against `{{ [!] [SLOT:] [@owner] <label> }}`.
+
+    The three prefixes appear once each, in that order, and a remainder still
+    carrying one of them is a parse error rather than a label that happens to
+    start with `!` — because that reading would silently lose the gate bit,
+    which is the one thing that decides whether a paper can be submitted.
+    """
+    shown = _collapse(text[start + 2 : end - 2])
+    where = "%s:%d" % (path.name, _line_of(text, start))
+    label = shown
+
+    gate = label.startswith("!")
+    if gate:
+        label = label[1:].lstrip()
+
+    behaviour = HOLE
+    if SLOT_INTENT.match(label):
+        mark = SLOT_MARK.match(label)
+        if not mark:
+            raise ParseError(
+                "%s: `{{ %s }}` claims to be a venue slot — the marker is "
+                "`SLOT:`, uppercase, with no space before the colon"
+                % (where, shown)
+            )
+        behaviour = VENUE_SLOT
+        label = label[mark.end() :].lstrip()
+
+    owner = None
+    named = OWNER.match(label)
+    if named:
+        owner = named.group(0)
+        label = label[named.end() :].lstrip()
+
+    if not label:
+        raise ParseError(
+            "%s: `{{ %s }}` names no value — a brace names the missing value, "
+            "and its reasoning goes in a keyed comment beside it" % (where, shown)
+        )
+    if label.startswith(("!", "@")) or SLOT_INTENT.match(label):
+        raise ParseError(
+            "%s: `{{ %s }}` — the `!`, `SLOT:` and `@owner` prefixes appear "
+            "once each, in that order" % (where, shown)
+        )
+    return Annotation(
+        behaviour, gate, owner, label, path, _line_of(text, start), None
+    )
+
+
+def _read_comment(match, text, path, block, keyed):
+    """One stripped comment, read again for the manifest.
+
+    A comment enters the manifest **if and only if** its first non-space
+    character is `!` or `@`. That is what keeps the rung, the objection note
+    and the section anchors out of a list of outstanding work sent to a
+    co-author: nobody owes a rung.
+    """
+    content = match.group(1).strip()
+    line = _line_of(text, match.start())
+
+    reasoning = REASONING_KEY.match(content)
+    if reasoning:
+        keyed.setdefault(_join_key(reasoning.group(1)), []).append(
+            (_collapse(reasoning.group(2)), line)
+        )
+        return None
+    if not content.startswith(("!", "@")):
+        return None  # an ordinary author comment: stripped, tracked nowhere
+
+    shown = _collapse(content)
+    where = "%s:%d" % (path.name, line)
+    label = shown
+    gate = label.startswith("!")
+    if gate:
+        label = label[1:].lstrip()
+    owner = None
+    named = OWNER.match(label)
+    if named:
+        owner = named.group(0)
+        label = label[named.end() :].lstrip()
+    if not label:
+        raise ParseError(
+            "%s: `<!-- %s -->` names no value" % (where, shown)
+        )
+    if label.startswith(("!", "@")):
+        raise ParseError(
+            "%s: `<!-- %s -->` — the `!` and `@owner` prefixes appear once "
+            "each, in that order" % (where, shown)
+        )
+    return Annotation(
+        SILENT, gate, owner, label, path, line, None if block is None else block.slot_id
+    )
+
+
+def _join_reasoning(braces, keyed, path, advisories):
+    """Attach each keyed comment to the brace it keys.
+
+    The label is the join key, and the grammar fixes token order but not
+    whitespace — drafting produced two spellings of one label without intent,
+    which orphaned the reasoning **silently**. Normalisation closes that, and a
+    key matching no brace warns rather than vanishing.
+    """
+    for key, entries in keyed.items():
+        reasoning, line = entries[0]
+        matched = [
+            annotation for _, _, annotation in braces if annotation.label == key
+        ]
+        for annotation in matched:
+            annotation.reasoning = reasoning
+        if not matched:
+            advisories.append(
+                (
+                    line,
+                    "%s:%d: `{{%s}}` keys no brace in this source, so its "
+                    "reasoning is attached to nothing" % (path.name, line, key),
+                )
+            )
+        # Keeping the first and dropping the rest silently is the orphan defect
+        # one step along, so it warns for the same reason and at the same tier.
+        for _, repeated in entries[1:]:
+            advisories.append(
+                (
+                    repeated,
+                    "%s:%d: `{{%s}}` is keyed again here, and only the comment "
+                    "at line %d is attached" % (path.name, repeated, key, line),
+                )
+            )
+
+
+def _blank_spans(masked, spans):
+    """The text with every brace blanked to same-length whitespace too.
+
+    The direction is committed by the **claim**, so the scan for it must not
+    see the labels — and a label carrying a `!` gate bit would otherwise read
+    as the end of a sentence.
+    """
+    out = list(masked)
+    for start, end, _ in spans:
+        for offset in range(start, end):
+            if out[offset] != "\n":
+                out[offset] = " "
+    return "".join(out)
+
+
+def _collapse(text):
+    """Trimmed, with internal whitespace collapsed. Labels compare after this,
+    so a brace that wraps six lines is one label and not six."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _join_key(label):
+    """A label as a join key: collapsed, and stripped of all three prefixes.
+
+    Tolerant by design. A malformed key inside a comment is not reader-facing,
+    so it warns through `_join_reasoning` rather than refusing the render.
+    """
+    key = _collapse(label)
+    if key.startswith("!"):
+        key = key[1:].lstrip()
+    mark = SLOT_MARK.match(key)
+    if mark:
+        key = key[mark.end() :].lstrip()
+    named = OWNER.match(key)
+    if named:
+        key = key[named.end() :].lstrip()
+    return key
+
+
+def _direction(masked, start, end):
+    """The directional word committed in the sentence resting on this hole.
+
+    Six of seven gating annotations in the corpus sat under a committed
+    direction written before the value existed — and deletion being the only
+    closure means the obligation vanishes the moment the value is filled. So
+    the direction is named while the hole is still open, on the hole's own
+    manifest entry, inheriting the hole's gate bit and adding none.
+    """
+    sentence = _sentence_around(masked, start, end)
+    found = DIRECTIONAL.search(sentence)
+    return found.group(0) if found else None
+
+
+def _sentence_around(masked, start, end):
+    """The sentence a brace sits in, minus the brace itself — the direction is
+    committed by the claim, never by the label."""
+    left = 0
+    for match in SENTENCE_END.finditer(masked, 0, start):
+        left = match.end()
+    paragraph = masked.rfind("\n\n", 0, start)
+    if paragraph >= 0:
+        left = max(left, paragraph + 2)
+
+    right = len(masked)
+    found = SENTENCE_END.search(masked, end)
+    if found:
+        right = found.end()
+    paragraph = masked.find("\n\n", end)
+    if paragraph >= 0:
+        right = min(right, paragraph)
+    return masked[left:start] + " " + masked[end:right]
+
+
+def _block_alone(masked, start, end):
+    """Nothing but whitespace between the brace and the blank line on either
+    side. On the whole corpus that shape is always a venue slot — which is
+    strong evidence and not the definition, so it warns."""
+    left = masked.rfind("\n\n", 0, start)
+    left = 0 if left < 0 else left + 2
+    right = masked.find("\n\n", end)
+    right = len(masked) if right < 0 else right
+    return not (masked[left:start].strip() or masked[end:right].strip())
 
 
 def _attribute(prose, block, path, stray):
@@ -574,11 +987,14 @@ def _line_of(text, offset):
     return text.count("\n", 0, offset) + 1
 
 
-def _mask_comments(text):
-    """Blank every comment's content, keeping the newlines, so a scan over the
-    result still reports the source's own line numbers."""
+def _mask_comments(text, fenced):
+    """Blank every comment's content to same-length whitespace, keeping the
+    newlines, so a scan over the result still reports the source's own line
+    numbers and offsets. A fenced comment is literal text, so it survives."""
 
     def blank(match):
+        if _inside(fenced, match.start()):
+            return match.group(0)
         return "".join("\n" if char == "\n" else " " for char in match.group(0))
 
     return COMMENT.sub(blank, text)
@@ -592,7 +1008,7 @@ def _refuse_headings(text, path, fenced):
     Both markdown spellings count. The underlined form is the one an editor
     reaches for by hand, so leaving it out would leave the surface open.
     """
-    masked = _mask_comments(text)
+    masked = _mask_comments(text, fenced)
     offset = 0
     previous = ""
     for number, line in enumerate(masked.splitlines(), start=1):
@@ -743,6 +1159,23 @@ def check_originating_slot_children(paper):
     return Verdict.over(problems)
 
 
+def check_gating_annotations(paper):
+    """No annotation carrying the gate bit is still open.
+
+    The render is faithful either way — a gap comes out as a token and lands in
+    the manifest — but the work is unfinished, so this gates submission and
+    never blocks circulation. Both brace behaviours and SILENT are in scope:
+    the bit is independent of what the reader sees, which is what lets a verify
+    flag emit nothing and still refuse a submission.
+    """
+    problems = [
+        "%s `%s`" % (annotation.where, annotation.label)
+        for annotation in paper.annotations_in_scope
+        if annotation.gate
+    ]
+    return Verdict.over(problems)
+
+
 def check_unfilled_skeleton_slot(paper):
     """An unfilled slot is a hole with the gate bit set, so the skeleton's own
     slot list is the completion checklist.
@@ -771,7 +1204,7 @@ def _owes_prose(paper, slot):
 #
 #   parse    skeleton / spine grammar    (built)
 #   parse    source grammar              (built)
-#   parse    brace grammar               annotation channel
+#   parse    brace grammar               (built)
 #   parse    citation group              citations
 #   parse    reference literals          figures and panels
 #   hard     slot integrity              (built; becomes slot / roster
@@ -780,7 +1213,7 @@ def _owes_prose(paper, slot):
 #   hard     citation → bib entry        citations
 #   hard     unit / rung pairing         (built)
 #   hard     originating slot children   (built)
-#   gating   annotations (gating)        annotation channel
+#   gating   annotations (gating)        (built)
 #   gating   unfilled skeleton slot      (built)
 #   gating   bare holes                  residue lints
 #   gating   workflow phrases            residue lints
@@ -793,12 +1226,13 @@ REGISTRY = [
     ("slot integrity", HARD, DOCUMENT, check_slot_integrity),
     ("unit / rung pairing", HARD, None, check_unit_rung_pairing),
     ("originating slot children", HARD, None, check_originating_slot_children),
+    ("annotations (gating)", GATING, None, check_gating_annotations),
     ("unfilled skeleton slot", GATING, None, check_unfilled_skeleton_slot),
 ]
 
 # The parse-tier rows print `PASS` whenever a table prints at all, because a
 # parse-tier failure suppresses the table.
-PARSE_ROWS = ["skeleton / spine grammar", "source grammar"]
+PARSE_ROWS = ["skeleton / spine grammar", "source grammar", "brace grammar"]
 
 
 # --------------------------------------------------------------------------
@@ -810,11 +1244,23 @@ class Paper:
     """One paper at one granularity: the two files, the source, and the slots
     in scope."""
 
-    def __init__(self, skeleton, spine, blocks, stray, granularity, unit):
+    def __init__(
+        self,
+        skeleton,
+        spine,
+        blocks,
+        stray,
+        annotations,
+        warnings,
+        granularity,
+        unit,
+    ):
         self.skeleton = skeleton
         self.spine = spine
         self.blocks = blocks
         self.stray = stray
+        self.annotations = annotations
+        self.warnings = warnings
         self.granularity = granularity
         self.unit = unit
         self.slots = skeleton.subtree(unit) if unit is not None else skeleton.slots
@@ -832,6 +1278,23 @@ class Paper:
 
     def prose_for(self, slot):
         return self._prose.get(slot.id, "")
+
+    @property
+    def annotations_in_scope(self):
+        """The annotations the gate can speak for at this granularity.
+
+        The **gate** is scoped the way every other row is. The **manifest** is
+        not: it enters whole, because it is `f(source)` recomputed per render
+        and an absolute input to a diff-relative judgement axis.
+        """
+        if self.granularity == DOCUMENT:
+            return self.annotations
+        in_scope = set(slot.id for slot in self.slots)
+        return [
+            annotation
+            for annotation in self.annotations
+            if annotation.slot_id in in_scope
+        ]
 
 
 def derive_unit(skeleton, blocks, named):
@@ -886,7 +1349,76 @@ def render_document(paper):
 
 
 def _hole(label):
-    return "⟦HOLE: %s⟧" % label
+    return "⟦%s: %s⟧" % (HOLE, label)
+
+
+def format_manifest(annotations):
+    """Every open annotation, grouped by `@owner`.
+
+    Grouping by owner is what makes it **sendable**: an experimentalist can be
+    handed their own group and nothing else. It is printed whether or not it is
+    empty, because an absent manifest reads as nobody having looked — and it is
+    an input to a judgement axis that has no previous manifest to diff.
+    """
+    lines = [""]
+    if annotations:
+        gating = sum(1 for annotation in annotations if annotation.gate)
+        lines.append(
+            "%smanifest — %d open annotation%s, %d carrying the gate bit"
+            % (INDENT, len(annotations), "" if len(annotations) == 1 else "s", gating)
+        )
+    else:
+        lines.append("%smanifest — no open annotations" % INDENT)
+    lines.append(
+        "%s→ f(source), recomputed at every render; deletion is the only closure"
+        % INDENT
+    )
+
+    width = max([len(annotation.where) for annotation in annotations] or [0])
+    for owner in sorted(set(annotation.owner for annotation in annotations)):
+        lines.append("")
+        lines.append("%s%s" % (INDENT, owner))
+        for annotation in annotations:
+            if annotation.owner != owner:
+                continue
+            lines.append(
+                "%s%s%s  %s  %s  %s"
+                % (
+                    INDENT,
+                    INDENT,
+                    "!" if annotation.gate else " ",
+                    annotation.behaviour.ljust(BEHAVIOUR_WIDTH),
+                    annotation.where.ljust(width),
+                    annotation.label,
+                )
+            )
+            for name, value in (
+                ("direction", _direction_line(annotation)),
+                ("reasoning", annotation.reasoning),
+            ):
+                if value:
+                    lines.append("%s%s: %s" % (" " * 7, name, value))
+    return "\n".join(lines) + "\n"
+
+
+def _direction_line(annotation):
+    if annotation.direction is None:
+        return None
+    return "`%s` is committed before this value exists" % annotation.direction
+
+
+def format_warnings(warnings):
+    """Advisory, and advisory means advisory: never a row, never an exit code.
+
+    A hard cap on either lint was rejected — it over- and under-fires, refusing
+    a legitimate 110-character noun phrase while passing a 90-character
+    imperative.
+    """
+    if not warnings:
+        return ""
+    lines = ["", "%swarnings — advisory; never a refusal" % INDENT, ""]
+    lines.extend("%s%s%s" % (INDENT, INDENT, warning) for warning in warnings)
+    return "\n".join(lines) + "\n"
 
 
 def format_report(rows, granularity):
@@ -990,7 +1522,7 @@ def main(argv=None):
         paths = source_paths(source)
         skeleton = parse_skeleton(root / "skeleton.md")
         spine = parse_spine(root / "spine.md")
-        blocks, stray = parse_source(paths)
+        blocks, stray, annotations, warnings = parse_source(paths)
         unit = None
         if granularity == SECTION:
             unit = derive_unit(skeleton, blocks, args.section)
@@ -1001,9 +1533,15 @@ def main(argv=None):
         sys.stderr.write("render-paper: %s\n" % error)
         return EXIT_HARD
 
-    paper = Paper(skeleton, spine, blocks, stray, granularity, unit)
+    paper = Paper(
+        skeleton, spine, blocks, stray, annotations, warnings, granularity, unit
+    )
     rows, failed = run_gate(paper)
-    report = format_report(rows, granularity)
+    report = (
+        format_report(rows, granularity)
+        + format_manifest(paper.annotations)
+        + format_warnings(paper.warnings)
+    )
 
     if failed[HARD]:
         sys.stderr.write(report)
