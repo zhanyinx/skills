@@ -653,6 +653,32 @@ class TestChainBookkeeping:
         assert result.exit_code == 1
         assert "`D1` declares R4 closes it, but R3 does" in result.report
 
+    def test_the_declared_closer_is_checked_against_every_rung_that_closes(
+        self, paper, run_in
+    ):
+        # Two rungs close D1 and neither is the declared one, so the ladder is
+        # wrong twice over — and the second finding must not vanish behind the
+        # first.
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text()
+            .replace("- closes: D1\n", "")
+            .replace("- restates: R4", "- restates: R4\n- closes: D1")
+            .replace(
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration",
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration\n- closes: D1",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "`D1` is closed twice, by R1 and R3" in result.report
+        assert "`D1` declares R4 closes it, but R1 and R3 do" in result.report
+
     def test_a_declared_closer_that_is_not_a_rung_fails_the_gate(self, paper, run_in):
         where = paper("clean")
         spine = where / "spine.md"
@@ -697,8 +723,8 @@ class TestChainBookkeeping:
 
 
 class TestDebtPrecedence:
-    """`K4`: every debt is opened in a unit no later than the unit that closes
-    it, or the reader meets the payoff before the promise."""
+    """Every debt is opened in a unit no later than the unit that closes it, or
+    the reader meets the payoff before the promise."""
 
     def test_a_debt_closed_before_it_is_opened_fails_the_gate(self, paper, run_in):
         where = paper("clean")
@@ -800,8 +826,8 @@ class TestTheWalkReadsTheDeclaredRelation:
 
 
 class TestTheLocalityTest:
-    """`K8` is mechanically decidable from the two files, which is what makes
-    it a check rather than a habit. It reports; it never gates."""
+    """The locality test is mechanically decidable from the two files, which is
+    what makes it a check rather than a habit. It reports; it never gates."""
 
     def test_the_row_carries_numbers_and_never_a_verdict(self, render):
         result = render("clean", "MANUSCRIPT.working.md", "--check")

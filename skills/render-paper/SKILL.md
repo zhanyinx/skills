@@ -106,10 +106,10 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   between checked-and-fine and never-checked, which is why no single-word verdict is emitted anywhere.
 - A `FAIL` carries its count and what failed.
 - **A reported row carries numbers instead of a verdict**, and it never moves the exit code — the
-  `locality test` row prints `4 units, 2 cross-unit edges (…)` where a gate row prints `PASS`. A
-  measured fact is what the author reads and what the review reads; what to do about it is judgement
-  the render does not hold. Where a reported row is whole-document only, it prints `SKIPPED` like any
-  other out-of-scope row.
+  `locality test` row prints `4 units, 6 slots, 2 cross-unit edges (…)` where a gate row prints
+  `PASS`. A measured fact is what the author reads and what the review reads; what to do about it is
+  judgement the render does not hold. Where a reported row is whole-document only, it prints
+  `SKIPPED` like any other out-of-scope row.
 - The table closes with the counts and the line saying it is **not** a claim that the section (or the
   document) is finished. A gate with no FAILs is a statement about mechanism, never about judgement.
   Every row is counted once, under what it printed, so the four counts sum to the rows.

@@ -6,7 +6,7 @@
   unfilled skeleton slot    FAIL — 1 (`results`)
   chain bookkeeping         PASS
   debt precedence           PASS
-  locality test             2 units, 1 cross-unit edge (abstract restates results)
+  locality test             2 units, 2 slots, 1 cross-unit edge (abstract restates results)
 
   7 pass, 1 fail, 0 out of scope, 1 reported
   → NOT a claim that this document is finished

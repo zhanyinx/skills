@@ -111,8 +111,8 @@ than against what an earlier rung planned to write.
 ## The chain walk
 
 `render-paper` walks the declared relations and reports the argument's bookkeeping. It is a graph
-query over declared metadata: it reads the four relations and nothing else — never the prose, and
-**never the section type.**
+query over declared metadata: the four relations here, and the skeleton's order for precedence. It
+never reads the prose, and it **never reads the section type.**
 
 ### `chain bookkeeping` — submit-gating
 
