@@ -74,6 +74,47 @@ OPENS_VALUE = re.compile(r"^(D\d+)\s+\(closed by (R\d+)\)\s+—\s+(\S.*)$")
 DEBT_ID = re.compile(r"^D\d+$")
 RUNG_ID = re.compile(r"^R\d+$")
 
+# The reference surface: `@`-prefixed identifiers, and brackets that group them
+# and contain nothing else. One rule covers citations and figures alike, which
+# is why the identifier pattern is shared rather than duplicated per class.
+#
+# The trailing character may not be punctuation, so `@smith2020.` ends a
+# sentence rather than swallowing the full stop into the key.
+IDENTIFIER = r"[A-Za-z0-9_](?:[A-Za-z0-9_:.#$%&+?<>~/-]*[A-Za-z0-9_])?"
+REFERENCE = re.compile(r"@(%s)" % IDENTIFIER)
+CITATION_GROUP = re.compile(r"\[\s*@%s(?:\s*;\s*@%s)*\s*\]" % (IDENTIFIER, IDENTIFIER))
+BRACKET_SPAN = re.compile(r"\[[^\[\]]*\]", re.DOTALL)
+
+# A figure lives in the same namespace behind the same `@`, and `figures and
+# panels` owns resolving it. Here it is only ever *not a citation key*: the
+# bracket grammar accepts it, the bibliography is never asked about it, and the
+# render leaves any token carrying one verbatim.
+FIGURE_PREFIX = "fig:"
+
+# The render's own gap token. Its label is author-facing text that already sits
+# in the prose by the time citations resolve, so the scan steps over it rather
+# than numbering a key an author wrote inside a hole.
+GAP_TOKEN = r"⟦[^⟧]*⟧"
+CITATION_TOKEN = re.compile(
+    r"(?P<gap>%s)|(?P<group>%s)|(?P<bare>@%s)"
+    % (GAP_TOKEN, CITATION_GROUP.pattern, IDENTIFIER),
+    re.DOTALL,
+)
+
+BIB_ENTRY = re.compile(r"@(\w+)\s*\{", re.MULTILINE)
+BIB_LINE_COMMENT = re.compile(r"^[ \t]*%.*$", re.MULTILINE)
+BIB_FIELD = re.compile(r"([A-Za-z][A-Za-z0-9_-]*)\s*=\s*")
+BIB_PATH = "references.bib"
+
+# `@string`, `@preamble` and `@comment` are BibTeX machinery, not entries, so
+# they carry no citation key and are stepped over rather than refused.
+BIB_NON_ENTRY = frozenset(["string", "preamble", "comment"])
+
+# The reference list is deliberately style-neutral: the venue's citation style
+# is a typesetting concern downstream, and encoding one here would put
+# paper-specific text in the generator.
+BIB_CONTAINER = ("journal", "booktitle", "publisher", "school", "institution")
+
 BRACE_OPEN = re.compile(r"\{\{")
 BRACE_CLOSE = re.compile(r"\}\}")
 SLOT_INTENT = re.compile(r"^slot\s*:", re.IGNORECASE)
@@ -473,6 +514,175 @@ def parse_spine(path):
 
 
 # --------------------------------------------------------------------------
+# the bibliography
+# --------------------------------------------------------------------------
+
+
+class Bibliography:
+    """The author's reference library, read from its declared path.
+
+    The render **reads it and never contains it.** A bibliography compiled into
+    the generator is the defect this replaces: it makes a key dangle against
+    the *script* rather than against the author's library, so the reported
+    dangling references were an artefact of the renderer and resolved cleanly
+    against the real thing.
+
+    Absence is a legal state, because the library is required by the
+    *citations* and not by the renderer: a paper citing nothing has nothing to
+    resolve. A paper that does cite gets the same dangling-reference hard error
+    it would get for one missing key.
+    """
+
+    def __init__(self, path, entries):
+        self.path = path
+        self.entries = entries
+
+    @property
+    def present(self):
+        return self.entries is not None
+
+    def entry(self, key):
+        return (self.entries or {}).get(key)
+
+
+def read_bibliography(path):
+    return Bibliography(path, parse_bibtex(path.read_text(), path) if path.exists() else None)
+
+
+def parse_bibtex(text, path):
+    """Every entry's key and fields, in file order.
+
+    Only what resolving a citation needs is read. `@string`, `@preamble` and
+    `@comment` carry no key and are stepped over; a `%` opening a line is a
+    BibTeX comment and is blanked, with its length kept so a diagnostic still
+    reports the file's own line numbers.
+    """
+    text = BIB_LINE_COMMENT.sub(lambda match: " " * len(match.group(0)), text)
+    entries = {}
+    cursor = 0
+    while True:
+        match = BIB_ENTRY.search(text, cursor)
+        if match is None:
+            return entries
+        line = _line_of(text, match.start())
+        close = _balanced(text, match.end() - 1, path, line)
+        cursor = close + 1
+        if match.group(1).lower() in BIB_NON_ENTRY:
+            continue
+        body = text[match.end() : close]
+        key, _, fields = body.partition(",")
+        key = key.strip()
+        if not key:
+            raise ParseError(
+                "%s: `@%s{` opens an entry with no citation key"
+                % (_where(path, line), match.group(1))
+            )
+        entries[key] = _bib_fields(fields, path, line)
+
+
+def _balanced(text, open_at, path, line):
+    """The offset of the `}` closing the `{` at `open_at`."""
+    depth = 0
+    cursor = open_at
+    while cursor < len(text):
+        char = text[cursor]
+        if char == "\\":
+            cursor += 2
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    raise ParseError("%s: an entry opens and never closes" % _where(path, line))
+
+
+def _bib_fields(body, path, line):
+    fields = {}
+    cursor = 0
+    while cursor < len(body):
+        if body[cursor] in " \t\r\n,":
+            cursor += 1
+            continue
+        match = BIB_FIELD.match(body, cursor)
+        if match is None:
+            raise ParseError(
+                "%s: expected `field = value` in the entry, found `%s`"
+                % (_where(path, line), _collapse(body[cursor : cursor + 20]))
+            )
+        value, cursor = _bib_value(body, match.end(), path, line)
+        fields[match.group(1).lower()] = _bib_text(value)
+    return fields
+
+
+def _bib_value(body, cursor, path, line):
+    """One field's raw value, and where it ended. Braced, quoted or bare."""
+    while cursor < len(body) and body[cursor] in " \t\r\n":
+        cursor += 1
+    if cursor < len(body) and body[cursor] == "{":
+        close = _balanced(body, cursor, path, line)
+        return body[cursor + 1 : close], close + 1
+    if cursor < len(body) and body[cursor] == '"':
+        close = body.find('"', cursor + 1)
+        if close < 0:
+            raise ParseError("%s: a quoted value never closes" % _where(path, line))
+        return body[cursor + 1 : close], close + 1
+    end = body.find(",", cursor)
+    end = len(body) if end < 0 else end
+    return body[cursor:end], end
+
+
+def _bib_text(value):
+    """A field value as prose: the render is not a LaTeX engine, so this is a
+    light touch — the protective braces dropped, the common accent commands
+    dropped with them, an en-dash range spelled as one."""
+    value = re.sub(r"\\[`'\"^~=.]\s*", "", value)
+    return _collapse(value.replace("{", "").replace("}", "").replace("--", "–"))
+
+
+def format_reference(number, key, entry):
+    """One numbered reference line.
+
+    Deliberately **style-neutral**: the venue's citation style is a typesetting
+    concern downstream, and encoding one here would put paper-specific text in
+    the generator — the thing this unit must never hold.
+    """
+    if entry is None:
+        # Unreachable: a key with no entry is a hard error, and neither mode
+        # emits under one. Spelled out anyway, because a silent drop here would
+        # be a reference list shorter than the numbers pointing into it.
+        return "%d. @%s" % (number, key)
+    container = next(
+        (entry[field] for field in BIB_CONTAINER if entry.get(field)), ""
+    )
+    if entry.get("volume"):
+        container = ("%s %s" % (container, entry["volume"])).strip()
+    if entry.get("pages"):
+        container = "%s:%s" % (container, entry["pages"]) if container else entry["pages"]
+    if entry.get("year"):
+        container = ("%s (%s)" % (container, entry["year"])).strip()
+    segments = [
+        _authors(entry.get("author", "")),
+        entry.get("title", ""),
+        container,
+        "doi:%s" % entry["doi"] if entry.get("doi") else entry.get("url", ""),
+    ]
+    line = ". ".join(part for part in segments if part) + "."
+    # A segment may already end in a full stop — an initial does, and so does an
+    # abbreviated journal name — so the separator is collapsed rather than a
+    # segment trimmed, which would eat the initial's own stop.
+    return "%d. %s" % (number, re.sub(r"\.(\s*\.)+", ".", line))
+
+
+def _authors(author):
+    """BibTeX's `and` separator spelled as `;`, and nothing else changed: an
+    author's own name is not the generator's to reformat."""
+    return "; ".join(part.strip() for part in re.split(r"\s+and\s+", author) if part.strip())
+
+
+# --------------------------------------------------------------------------
 # the source
 # --------------------------------------------------------------------------
 
@@ -517,18 +727,41 @@ class Annotation:
         return "⟦%s: %s⟧" % (self.behaviour, self.label)
 
 
+class Citation:
+    """One `@key` written in reader-facing prose, at the position it was
+    written.
+
+    The source position is what the check reports, and it is the reason
+    citations are collected off the source rather than off the assembled
+    document: by assembly time the blocks have been joined and every line
+    number is gone.
+    """
+
+    def __init__(self, key, origin, line, slot_id=None):
+        self.key = key
+        self.origin = origin
+        self.line = line
+        self.slot_id = slot_id
+
+    @property
+    def where(self):
+        return _where(self.origin, self.line)
+
+
 class Source:
     """What the source files say, read once.
 
-    Four things come out of one read and travel together from there to the
+    Five things come out of one read and travel together from there to the
     gate: the anchored blocks in the order they appear, the prose that landed
-    outside every slot, the annotation manifest, and the advisory warnings.
+    outside every slot, the annotation manifest, the citations, and the
+    advisory warnings.
     """
 
     def __init__(self):
         self.blocks = []
         self.stray = []
         self.annotations = []
+        self.citations = []
         self.warnings = []
 
 
@@ -585,6 +818,11 @@ def _read_one_source(source, text, path):
     spans = _brace_spans(masked, path, fenced, advisories)
     bare = _blank_spans(masked, spans)
 
+    # `bare` is exactly reader-facing prose: every comment and every brace
+    # blanked to same-length whitespace, so the two channels an author writes
+    # in are invisible here and every offset still points at the real source.
+    _refuse_bracket_spans(bare, path, fenced)
+
     keyed = {}
     current = None
     pending = []
@@ -599,6 +837,7 @@ def _read_one_source(source, text, path):
         taken = _chunk(spans, cursor, stop)
         pending.append(_substitute(text, cursor, stop, taken))
         source.annotations.extend(_attach(taken, current, masked, bare, advisories))
+        source.citations.extend(_cited(bare, cursor, stop, current, path, fenced))
         if match is None:
             break
         cursor = match.end()
@@ -848,6 +1087,55 @@ def _join_reasoning(braces, keyed, path, advisories):
                     "at line %d is attached" % (path.name, repeated, key, line),
                 )
             )
+
+
+def _refuse_bracket_spans(bare, path, fenced):
+    """Outside every comment and every fence, a `[…]` span in prose must be a
+    citation group. Anything else is a parse error.
+
+    The permissive form — *a `[…]` span is legal iff it contains an `@key`* —
+    was rejected for a specific reason: it admits `[verify this @smith2020]`,
+    which renders as *(verify this Smith 2020)*. That is a free-text channel
+    into reader-facing prose, which is the failure class this whole clause
+    exists to close, re-opened inside the clause closing it.
+
+    The refusal costs nothing on real text. Over the calibration corpus's 73
+    bracket spans, 40 are citations and 33 are author-facing annotations that
+    now live in the annotation channel — **zero** are markdown links, footnotes
+    or any other legitimate use.
+    """
+    for match in BRACKET_SPAN.finditer(bare):
+        if _inside(fenced, match.start()):
+            continue
+        if CITATION_GROUP.fullmatch(match.group(0)):
+            continue
+        raise ParseError(
+            "%s: `%s` is not a citation group — brackets group `@key` "
+            "references separated by `; ` and contain nothing else"
+            % (_where(path, _line_of(bare, match.start())), _collapse(match.group(0)))
+        )
+
+
+def _cited(bare, start, end, block, path, fenced):
+    """Every citation key written in one chunk of prose, in source order.
+
+    A `@fig:` identifier shares the namespace and is not a citation: the
+    bibliography is never asked about it, and `figures and panels` owns
+    resolving it.
+    """
+    found = []
+    for match in REFERENCE.finditer(bare, start, end):
+        if _inside(fenced, match.start()) or match.group(1).startswith(FIGURE_PREFIX):
+            continue
+        found.append(
+            Citation(
+                match.group(1),
+                path,
+                _line_of(bare, match.start()),
+                None if block is None else block.slot_id,
+            )
+        )
+    return found
 
 
 def _blank_spans(masked, spans):
@@ -1339,6 +1627,39 @@ def check_slot_integrity(paper):
     return Verdict.over(slot_integrity_problems(paper.skeleton, paper.blocks, paper.stray))
 
 
+def check_citation_entries(paper):
+    """Every cited key has an entry in the author's library.
+
+    **The check is asymmetric, and the asymmetry is the point.** A key with no
+    entry is a dangling reference — a token pointing at nothing, structurally
+    identical to a figure name absent from the roster, so it takes that tier. A
+    library entry this document does not cite gets **no check at all**: a
+    figure roster is a manifest of this document's objects, but a bibliography
+    is a library, and over-provisioning is its normal state. Transposing the
+    roster's symmetry here would hard-error a real paper forever over entries
+    its author deliberately kept and deliberately did not cite, which makes the
+    gate noisy and therefore skippable.
+
+    An orphaned entry in the *rendered* list needs no check either: the list is
+    built from the cited keys, so it is impossible by construction.
+
+    Whole-document only: whether a key resolves is a fact about the document,
+    and first-mention order is too.
+    """
+    if not paper.citations:
+        return Verdict.over([])
+    if not paper.bibliography.present:
+        return Verdict.over(["no bibliography at `%s`" % BIB_PATH])
+    problems = []
+    dangling = set()
+    for citation in paper.citations:
+        if citation.key in dangling or paper.bibliography.entry(citation.key):
+            continue
+        dangling.add(citation.key)
+        problems.append("%s `@%s`" % (citation.where, citation.key))
+    return Verdict.over(problems)
+
+
 def check_unit_rung_pairing(paper):
     """One unit is one rung, 1:1.
 
@@ -1427,12 +1748,12 @@ def _owes_prose(paper, slot):
 #   parse    skeleton / spine grammar    (built)
 #   parse    source grammar              (built)
 #   parse    brace grammar               (built)
-#   parse    citation group              citations
+#   parse    citation group              (built)
 #   parse    reference literals          figures and panels
 #   hard     slot integrity              (built; becomes slot / roster
 #                                        integrity when figures land the
 #                                        roster half of it)
-#   hard     citation → bib entry        citations
+#   hard     citation → bib entry        (built)
 #   hard     unit / rung pairing         (built)
 #   hard     originating slot children   (built)
 #   gating   annotations (gating)        (built)
@@ -1442,10 +1763,11 @@ def _owes_prose(paper, slot):
 #   gating   chain bookkeeping           chain walk
 #   reported (the diagnostics, the overlap instrument, the locality test)
 #
-# The two parse-tier rows built here have no entry below: a parse error means
+# The parse-tier rows built here have no entry below: a parse error means
 # nothing ran, so the table is absent rather than carrying their verdicts.
 REGISTRY = [
     ("slot integrity", HARD, DOCUMENT, check_slot_integrity),
+    ("citation → bib entry", HARD, DOCUMENT, check_citation_entries),
     ("unit / rung pairing", HARD, None, check_unit_rung_pairing),
     ("originating slot children", HARD, None, check_originating_slot_children),
     ("annotations (gating)", GATING, None, check_gating_annotations),
@@ -1454,7 +1776,12 @@ REGISTRY = [
 
 # The parse-tier rows print `PASS` whenever a table prints at all, because a
 # parse-tier failure suppresses the table.
-PARSE_ROWS = ["skeleton / spine grammar", "source grammar", "brace grammar"]
+PARSE_ROWS = [
+    "skeleton / spine grammar",
+    "source grammar",
+    "brace grammar",
+    "citation group",
+]
 
 
 # --------------------------------------------------------------------------
@@ -1466,12 +1793,14 @@ class Paper:
     """One paper at one granularity: the two files, the source, and the slots
     in scope."""
 
-    def __init__(self, skeleton, spine, source, granularity, unit):
+    def __init__(self, skeleton, spine, bibliography, source, granularity, unit):
         self.skeleton = skeleton
         self.spine = spine
+        self.bibliography = bibliography
         self.blocks = source.blocks
         self.stray = source.stray
         self.annotations = source.annotations
+        self.citations = source.citations
         self.warnings = source.warnings
         self.granularity = granularity
         self.unit = unit
@@ -1521,14 +1850,64 @@ def render_document(paper):
     out = [BANNER]
     if paper.granularity == DOCUMENT:
         out.append("\n# %s\n" % (paper.skeleton.title or _hole("the document title")))
+    numbers = {}
     for slot in paper.slots:
         out.append("\n%s %s\n" % ("#" * slot.level, slot.heading))
         prose = paper.prose_for(slot)
         if not prose and not slot.children:
             prose = _hole("prose for %s" % slot.id)
         if prose:
+            if paper.granularity == DOCUMENT:
+                prose = _resolve_citations(prose, numbers)
             out.append("\n%s\n" % prose)
+    out.append(_reference_list(paper, numbers))
     return "".join(out)
+
+
+def _resolve_citations(prose, numbers):
+    """Every citation token in one slot's prose, replaced by its number.
+
+    Numbers are assigned **by first mention in the assembled document**, which
+    is why `numbers` is carried across the slots in render order rather than
+    rebuilt per slot. A drafting session writes a key and never a number, so a
+    number it might have written wrong — wrong-but-valid, and invisible to
+    every check — is a thing it cannot type.
+
+    Two token classes are stepped over. A gap token's label is author-facing
+    text the render has already substituted into the prose, so a key inside one
+    is not a citation of this document; and a `@fig:` identifier belongs to the
+    figure namespace, which resolves elsewhere.
+    """
+
+    def resolve(match):
+        token = match.group(0)
+        if match.group("gap"):
+            return token
+        keys = REFERENCE.findall(token)
+        if any(key.startswith(FIGURE_PREFIX) for key in keys):
+            return token
+        for key in keys:
+            numbers.setdefault(key, len(numbers) + 1)
+        return "[%s]" % ",".join(str(numbers[key]) for key in keys)
+
+    return CITATION_TOKEN.sub(resolve, prose)
+
+
+def _reference_list(paper, numbers):
+    """The reference list, as a function of the cited keys.
+
+    Nothing else can reach it, so an orphaned entry is impossible by
+    construction rather than something a check has to look for. It is absent
+    entirely when nothing is cited, and at `--section` granularity, where no
+    key has a number because first-mention order is a whole-document fact.
+    """
+    if not numbers:
+        return ""
+    level = min(unit.level for unit in paper.skeleton.units) if paper.skeleton.units else 2
+    lines = ["\n%s References\n\n" % ("#" * level)]
+    for key, number in sorted(numbers.items(), key=lambda item: item[1]):
+        lines.append("%s\n" % format_reference(number, key, paper.bibliography.entry(key)))
+    return "".join(lines)
 
 
 def _hole(label):
@@ -1708,6 +2087,7 @@ def main(argv=None):
         paths = source_paths(source_path)
         skeleton = parse_skeleton(root / "skeleton.md")
         spine = parse_spine(root / "spine.md")
+        bibliography = read_bibliography(root / BIB_PATH)
         source = parse_source(paths)
         unit = None
         if granularity == SECTION:
@@ -1719,7 +2099,7 @@ def main(argv=None):
         sys.stderr.write("render-paper: %s\n" % error)
         return EXIT_HARD
 
-    paper = Paper(skeleton, spine, source, granularity, unit)
+    paper = Paper(skeleton, spine, bibliography, source, granularity, unit)
     rows, failed = run_gate(paper)
     report = (
         format_report(rows, granularity)

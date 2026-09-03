@@ -1,13 +1,15 @@
   skeleton / spine grammar  PASS
   source grammar            PASS
   brace grammar             PASS
+  citation group            PASS
   slot integrity            PASS
+  citation → bib entry      PASS
   unit / rung pairing       PASS
   originating slot children PASS
   annotations (gating)      PASS
   unfilled skeleton slot    PASS
 
-  8 pass, 0 fail, 0 out of scope
+  10 pass, 0 fail, 0 out of scope
   → NOT a claim that this document is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit
