@@ -142,13 +142,14 @@ class TestNoHouseStyleShips:
 
         assert "never a default" in example or "not a default" in example
 
-    def test_the_skill_file_carries_no_filled_key(self):
-        """The block that shipped a voice was deleted, not relocated."""
-        filled = [
-            key for key, value in key_lines(SKILL.read_text()) if value != ""
-        ]
-
-        assert filled == []
+    # The guard that this class used to carry over `write-paper/SKILL.md` — no
+    # filled key anywhere in the skill file, because the block that shipped a
+    # voice was deleted rather than relocated — now runs over all five skill
+    # files in `test_skill_contract.py`. It is not particular to the skill that
+    # owns the schema: `review-paper` derives the effective stanza and
+    # `assemble-paper` reads `terms` from it, so a filled value in either
+    # installs the same house style. The wider assertion strictly contains the
+    # one that stood here, so keeping both would be two homes for one fact.
 
 
 class TestTheKeySetIsClosed:
