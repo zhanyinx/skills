@@ -650,9 +650,11 @@ class TestTheReportedTier:
         assert "## Results and discussion" in result.document
 
     def test_the_count_is_scoped_to_prose(self, render):
-        # The fixture carries seven em dashes and three of them are prose: the
-        # others sit in a comment, a table row, a fence and a citation group,
-        # so an unscoped count would fire on a quoted source title.
+        # The fixture carries six em dashes and three of them are prose: the
+        # others sit in a comment, a table row and a fence, so an unscoped
+        # count would fire on text no author wrote as prose. A citation group
+        # can no longer hide one — its grammar admits only keys and `;` — but
+        # it is still blanked, because its keys are not words of a sentence.
         result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
 
         assert rows_of(result.report)["em dashes (threshold 0)"].endswith(
@@ -858,10 +860,15 @@ class TestTheReportedTier:
 
         assert "(8 sentences)" in rows_of(result.report)["sentence length"]
 
-    def test_a_bracket_span_with_no_citation_key_is_prose(self, paper, run_in):
-        # Blanking a bracket span that is not a citation group would shorten
-        # the sentence every number is measured over, and hide an em dash
-        # sitting in prose the author wrote.
+    def test_a_bracket_span_with_no_citation_key_never_reaches_the_count(
+        self, paper, run_in
+    ):
+        # The diagnostics once had to decide whether a bracket span with no key
+        # was prose, because blanking it would shorten the sentence every
+        # number is measured over and hide an em dash the author wrote. That
+        # question is now settled one layer up: every bracket character in
+        # prose belongs to a citation group, enforced by parse, so a span with
+        # no key never reaches a diagnostic at all.
         where = paper("prose-diagnostics")
         source = where / "MANUSCRIPT.working.md"
         source.write_text(
@@ -873,9 +880,8 @@ class TestTheReportedTier:
 
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
-        assert rows_of(result.report)["em dashes (threshold 0)"] == (
-            "FAIL — 4 (lines 4, 8, 18, 23)"
-        )
+        assert result.exit_code == 3
+        assert "not a citation group" in result.report
 
     def test_every_row_prints_its_verdict_in_the_same_column(self, render):
         # The table is an interface `review-paper` reports verbatim, and the
