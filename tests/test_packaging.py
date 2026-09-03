@@ -20,20 +20,25 @@ def skill_directories():
     return sorted(d.name for d in SKILLS.iterdir() if (d / "SKILL.md").is_file())
 
 
-def declared_skills():
-    manifest = json.loads(PLUGIN.read_text())
-    return sorted(Path(path).name for path in manifest["skills"])
+def plugin():
+    return json.loads(PLUGIN.read_text())
+
+
+def marketplace_entry():
+    (entry,) = json.loads(MARKETPLACE.read_text())["plugins"]
+    return entry
 
 
 class TestPluginManifest:
     def test_declares_every_skill_in_the_tree(self):
-        assert declared_skills() == skill_directories()
+        declared = sorted(Path(path).name for path in plugin()["skills"])
+
+        assert declared == skill_directories()
 
     def test_every_declared_path_exists(self):
-        manifest = json.loads(PLUGIN.read_text())
         missing = [
             path
-            for path in manifest["skills"]
+            for path in plugin()["skills"]
             if not (REPO_ROOT / path / "SKILL.md").is_file()
         ]
 
@@ -42,10 +47,10 @@ class TestPluginManifest:
 
 class TestMarketplace:
     def test_declares_the_plugin_the_manifest_names(self):
-        marketplace = json.loads(MARKETPLACE.read_text())
-        plugin = json.loads(PLUGIN.read_text())
+        assert marketplace_entry()["name"] == plugin()["name"]
 
-        assert [entry["name"] for entry in marketplace["plugins"]] == [plugin["name"]]
+    def test_describes_the_plugin_the_way_the_plugin_describes_itself(self):
+        assert marketplace_entry()["description"] == plugin()["description"]
 
 
 class TestReadme:

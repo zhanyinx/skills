@@ -8,7 +8,7 @@ disable-model-invocation: true
 working manuscript, once and irreversibly, and it makes **the one editorial pass that reads the whole
 document end to end**.
 
-It holds no mechanical duty that another unit could disagree with it about. Concatenation, heading
+It holds no mechanical duty that another skill could disagree with it about. Concatenation, heading
 injection, numbering and the reference list all belong to `render-paper`; it holds no spine
 authority; it creates no annotation.
 
@@ -34,30 +34,47 @@ overlapping ownership this pipeline is built to avoid.
 ### 1. Pin the manuscript order
 
 Take the order from `skeleton.md`, which is authoritative. It is not a question to ask and not a
-thing to infer from the filesystem: an absent or unreadable `skeleton.md` is a hard error, and
-`render-paper` reports it as one.
+thing to infer from the filesystem: a missing or malformed `skeleton.md` is a parse error, so
+`render-paper` refuses to run at all and there is nothing to assemble until it is fixed.
 
-### 2. Read the whole document
+### 2. Promote
 
-`render-paper drafts/ --circulate` emits the whole piece as a reader meets it — in the skeleton's
-order, headings injected, the comment channel stripped — and its verdict table says on the way
-whether the sources parse and every unit pairs with its rung. Read that document; make the pass
-against it.
+Write the annotated working manuscript to `MANUSCRIPT.working.md` — every unit's source in the
+skeleton's order, annotations intact, anchors and no headings. Nothing is edited on the way in: the
+promotion moves the source, it does not improve it.
 
-This is the only pass anyone makes over the whole piece with the whole piece in front of them.
-Sampling it unit by unit is the exact vantage point every drafting session already had, and the
-defects below are invisible from there.
+**This is a promotion, and it is irreversible.** `drafts/` and `briefs/` freeze as history, and
+re-assembly from sections is no longer possible. From now on a new section is drafted straight into
+the working manuscript at its slot.
+
+**It comes before the editorial pass, not after.** That is the whole point of promoting: the pass
+below is whole-document work, and a through-line cannot be revised across thirteen files. It is
+also the only shape the write authority allows — the drafted sections belong to the drafting
+session, and this skill's one writable artifact is the working manuscript.
 
 ### 3. Make the editorial pass
 
-Scan the whole document, not just the boundaries — the highest-value catches sit pages apart. Fixes
-are written back into the sources under `drafts/`, never into a render.
+Render the promoted source and read it:
+
+```
+render-paper MANUSCRIPT.working.md --circulate
+```
+
+That is the whole piece as a reader meets it — headings injected, the comment channel stripped, every
+gap a conspicuous token. If it refuses with a parse error, nothing ran: fix what the error names
+before going further.
+
+This is the only pass anyone makes over the whole piece with the whole piece in front of them.
+Scan all of it, not just the boundaries — the highest-value catches sit pages apart, and sampling
+it unit by unit is the exact vantage point every drafting session already had, from which the
+defects below are invisible. Every fix is written back into `MANUSCRIPT.working.md`, never into a
+render.
 
 - **Redundant restatement** — the end of one unit previews what the next immediately says. Cut the
   thinner restatement, keep the fuller original.
 - **Cross-section repetition** — the same fact, mechanism, or explanation stated in full more than
   once across units. This is the highest-value catch at this stage, and it is the one thing no other
-  unit can see. Keep the fullest, most appropriately-placed version — usually the first — and
+  skill can see. Keep the fullest, most appropriately-placed version — usually the first — and
   replace every later instance with a short callback that **names the proposition, never the
   section**: "the shared DAPI anchor" or "reproducibility by construction", never "as described
   above" or "as described in Implementation". Check first whether the later unit needs the fact
@@ -65,9 +82,7 @@ are written back into the sources under `drafts/`, never into a render.
 - **Repeated caveat or scope statement** — a limitation or piece of framing restated in full every
   time it becomes relevant. State it fully at its first, most natural occurrence — "the comparison
   is between two proxies for the same quantity, measured on the same sections" — and let every later
-  recurrence be a brief pointer naming the proposition, "the proxy-to-proxy comparison". A caveat is
-  written as a positive statement of scope; it never denies a frame, because the denial plants the
-  frame it exists to keep out of the reader's head.
+  recurrence be a brief pointer naming the proposition, "the proxy-to-proxy comparison".
 - **Repeated contribution framing** — more than one unit independently flags the same material as
   the paper's central contribution. Not wrong at any single occurrence, but stacked across units it
   reads as the piece repeatedly telling the reader how to feel about itself. Keep at most one clear
@@ -85,23 +100,13 @@ per cut converts repetition into a table of contents in prose — which is a wor
 smaller one. Test: delete every section name from the manuscript and reshuffle it; a legal callback
 still parses.
 
-### 4. Promote, then hand off
-
-Write the annotated working manuscript to `MANUSCRIPT.working.md` — the whole manuscript in the
-skeleton's order, annotations intact, anchors and no headings.
-
-**This is a promotion, and it is irreversible.** `drafts/` and `briefs/` freeze as history, and
-re-assembly from sections is no longer possible. From now on a new section is drafted straight into
-the working manuscript at its slot. The cost is accepted deliberately: everything after assembly is
-genuinely whole-document work, and a through-line cannot be revised across thirteen files.
-
-Then hand off:
+### 4. Hand off
 
 ```
 render-paper MANUSCRIPT.working.md --circulate > MANUSCRIPT.md
 ```
 
-and run `/review-paper` over that render, with the whole-document checks now in scope rather than
+Then run `/review-paper` over that render, with the whole-document checks now in scope rather than
 printing `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`.
 
 ## Boundaries
@@ -115,7 +120,9 @@ printing `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`.
   The seam check belongs to the drafting session, the bookkeeping walk to `render-paper`, and the
   discharge question to `review-paper`'s Fidelity axis.
 - **Creates no annotation.** It reads the channel and writes prose; every `HOLE`, `SLOT` and
-  `SILENT` it finds is carried into the working manuscript untouched.
+  `SILENT` it finds is carried into the working manuscript untouched. Everything this pass flags
+  rather than fixes is raised with the author in the session — a flag is a sentence to a person,
+  never a marker left in the source.
 - **Renumbers nothing, and checks no heading.** Citations and figures resolve by first-mention
   order, panels by legend declaration order, headings are injected from the skeleton on every pass,
   and the reference list is built from cited keys — all of it in the render, none of it here.
