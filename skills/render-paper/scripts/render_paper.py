@@ -66,6 +66,78 @@ OPENS_VALUE = re.compile(r"^(D\d+)\s+\(closed by (R\d+)\)\s+—\s+(\S.*)$")
 DEBT_ID = re.compile(r"^D\d+$")
 RUNG_ID = re.compile(r"^R\d+$")
 
+# The brief's six zone headings, of which exactly two are reader-facing — the
+# only zones whose content may legitimately appear in the prose.
+ARGUMENT = "Argument"
+INVENTORY = "Inventory"
+READER_FACING_ZONES = (ARGUMENT, INVENTORY)
+BRIEF_ZONES = READER_FACING_ZONES + (
+    "Must not claim",
+    "Sheds",
+    "Verify before prose",
+    "Sources",
+)
+
+# The ladder line is bookkeeping, not something the prose must convey: it names
+# the unit's relation to the rung above it, and a drafter copying it is copying
+# a relation, not lifting a claim.
+RELATION_LINE = re.compile(r"^(rung|closes|opens|restates)\s*:", re.IGNORECASE)
+
+# A word, keeping what a term keeps: internal hyphens, dots and slashes, so
+# `tile-boundary`, `ghcr.io/org/tool` and a version's `25.04.0` tokenise as
+# themselves. An operator like `≥` is not a word and does not become one — the
+# span is quoted from the prose, so the reader still sees it.
+TOKEN = re.compile(r"[a-z0-9][a-z0-9'’./+<>=-]*")
+TRAILING = "'’./-"
+CLOSING = ",;:.!?)]\"”"
+SENTENCE_END = re.compile(r"(?<=[.!?])[\"”)]?\s+")
+ABBREVIATION = re.compile(r"(^|\s)(e\.g|i\.e|cf|vs|fig|eq|al|ca|approx|ref)\.$", re.I)
+
+# A shared run this long is a phrase somebody moved, not a coincidence of
+# grammar. The corpus's own shortest transcribed span — *illumination
+# correction suppresses tile-boundary seams* — is five words, and its expected
+# spans (`MIT`, `scale bar required`, `tile-boundary crop, before/after BaSiC`)
+# are all shorter, so the floor separates them before either instrument runs.
+PHRASE_WORDS = 5
+QUOTE_WIDTH = 56
+
+# Function words carry no phrasing, so a run made of nothing else is grammar
+# rather than transcription.
+FUNCTION_WORDS = {
+    "a", "an", "and", "any", "are", "as", "at", "be", "been", "being", "both",
+    "but", "by", "can", "could", "did", "do", "does", "each", "either", "every",
+    "for", "from", "had", "has", "have", "her", "his", "how", "in", "into",
+    "is", "it", "its", "may", "might", "must", "no", "nor", "not", "of", "on",
+    "one", "only", "or", "our", "over", "per", "shall", "should", "so", "some",
+    "such", "than", "that", "the", "their", "them", "then", "there", "these",
+    "they", "this", "those", "through", "to", "under", "up", "was", "we",
+    "were", "what", "when", "where", "which", "while", "who", "will", "with",
+    "would", "you", "your",
+}
+
+# The finite forms a finite verb can take without ambiguity. Every one is a
+# closed-class word, so the list is complete rather than a sample, and it needs
+# no extension per paper — which it must not have, since paper-specific text in
+# the renderer is what this unit is forbidden to hold.
+FINITE_FORMS = {
+    "is", "are", "was", "were", "am", "has", "have", "had", "do", "does",
+    "did", "can", "could", "may", "might", "must", "shall", "should", "will",
+    "would", "cannot", "isn't", "aren't", "wasn't", "weren't", "hasn't",
+    "haven't", "hadn't", "doesn't", "don't", "didn't", "can't", "couldn't",
+    "won't", "wouldn't", "shouldn't", "mustn't",
+}
+
+# What cannot be the subject a finite verb agrees with. A word ending in `s`
+# after one of these is a plural noun, not a third-person present verb.
+NOT_A_SUBJECT = {
+    "a", "an", "the", "this", "these", "those", "its", "their", "our", "his",
+    "her", "some", "any", "no", "each", "every", "all", "both", "few", "many",
+    "more", "most", "other", "several", "such", "two", "three", "four", "five",
+    "six", "seven", "eight", "nine", "ten", "of", "in", "on", "at", "by",
+    "for", "from", "to", "with", "into", "over", "under", "per", "against",
+    "across", "and", "or", "plus", "versus", "vs",
+}
+
 BANNER = (
     "---\n"
     "generated-by: render-paper\n"
@@ -853,106 +925,125 @@ def scaffold(source, skeleton, named_unit):
 #
 # `briefs/<unit>.md` is a declared input, one per unit, beside the source. This
 # is the brief's only *parser*, but not its format's owner: the drafting skill
-# ships the two templates, and what this file fixes is the six zone headings it
-# parses and nothing else. So the parse surface stays a list of headings, and a
-# template change that renames a zone shows up here as an unparsed zone rather
-# than as silence.
+# is to ship the two templates, and what this file fixes is the six zone
+# headings it parses and nothing else. So the parse surface stays a list of
+# headings, and a template that renames a zone shows up here as an unparsed
+# zone rather than as silence.
 #
 # Exactly two zones are reader-facing, and they are the only zones whose content
 # may legitimately appear in the prose. Every other zone is instruction by
 # virtue of where it sits — positional separation, no marker strings.
 
-ARGUMENT = "Argument"
-INVENTORY = "Inventory"
-READER_FACING_ZONES = (ARGUMENT, INVENTORY)
-BRIEF_ZONES = READER_FACING_ZONES + (
-    "Must not claim",
-    "Sheds",
-    "Verify before prose",
-    "Sources",
-)
-
-# The ladder line is bookkeeping, not a proposition: it names the unit's
-# relation to the rung above it, and a drafter copying it into the prose is
-# copying a relation, not lifting a claim.
-RELATION_LINE = re.compile(r"^(rung|closes|opens|restates)\s*:", re.IGNORECASE)
-
-# A word, keeping what a term keeps: internal hyphens, dots, slashes and the
-# comparison operators a version constraint carries, so `tile-boundary`,
-# `ghcr.io/org/tool` and `≥ 25.04.0` survive tokenisation as themselves.
-TOKEN = re.compile(r"[a-z0-9][a-z0-9'’./+≥<>=-]*")
-TRAILING = "'’./-"
-CLOSING = ",;:.!?)]\"”"
-SENTENCE_END = re.compile(r"(?<=[.!?])[\"”)]?\s+")
-ABBREVIATION = re.compile(r"(^|\s)(e\.g|i\.e|cf|vs|fig|eq|al|ca|approx|ref)\.$", re.I)
-
-# A shared run this long is a phrase somebody moved, not a coincidence of
-# grammar. The corpus's own shortest transcribed span — *illumination
-# correction suppresses tile-boundary seams* — is five words, and its expected
-# spans (`MIT`, `scale bar required`, `tile-boundary crop, before/after BaSiC`)
-# are all shorter, so the floor separates them before either instrument runs.
-SUBSTANTIAL = 5
-
-# Function words carry no phrasing, so a run made of nothing else is grammar
-# rather than transcription. Two content words is the smallest run that could
-# have been lifted.
-FUNCTION_WORDS = {
-    "a", "an", "and", "any", "are", "as", "at", "be", "been", "being", "both",
-    "but", "by", "can", "could", "did", "do", "does", "each", "either", "every",
-    "for", "from", "had", "has", "have", "her", "his", "how", "in", "into",
-    "is", "it", "its", "may", "might", "must", "no", "nor", "not", "of", "on",
-    "one", "only", "or", "our", "over", "per", "shall", "should", "so", "some",
-    "such", "than", "that", "the", "their", "them", "then", "there", "these",
-    "they", "this", "those", "through", "to", "under", "up", "was", "we",
-    "were", "what", "when", "where", "which", "while", "who", "will", "with",
-    "would", "you", "your",
-}
-
-# The finite forms a finite verb can take without ambiguity. Every one of them
-# is a closed-class word, so the list is complete rather than a sample, and it
-# needs no extension per paper — which it must not have, since paper-specific
-# text in the renderer is what this unit is forbidden to hold.
-FINITE_FORMS = {
-    "is", "are", "was", "were", "am", "has", "have", "had", "do", "does",
-    "did", "can", "could", "may", "might", "must", "shall", "should", "will",
-    "would", "cannot", "isn't", "aren't", "wasn't", "weren't", "hasn't",
-    "haven't", "hadn't", "doesn't", "don't", "didn't", "can't", "couldn't",
-    "won't", "wouldn't", "shouldn't", "mustn't",
-}
-
-# What cannot be the subject a finite verb agrees with. A word ending in `s`
-# after one of these is a plural noun, not a third-person present verb.
-NOT_A_SUBJECT = {
-    "a", "an", "the", "this", "these", "those", "its", "their", "our", "his",
-    "her", "some", "any", "no", "each", "every", "all", "both", "few", "many",
-    "more", "most", "other", "several", "such", "two", "three", "four", "five",
-    "six", "seven", "eight", "nine", "ten", "of", "in", "on", "at", "by",
-    "for", "from", "to", "with", "into", "over", "under", "per", "against",
-    "across", "and", "or", "plus", "versus", "vs",
-}
-
 
 class Token:
-    """One word, and whether punctuation closes it off.
+    """One word, where it sits in its clause, and whether punctuation closes it
+    off.
 
     The punctuation is kept because it is what separates an inventory item's
     plural noun from a predication's verb: `5 DSL2 stages, DAPI as anchor` ends
     its noun on a comma, and `illumination correction suppresses tile-boundary
-    seams` does not.
+    seams` does not. The offsets are kept so a span can be quoted as the prose
+    wrote it rather than as this tokeniser saw it.
     """
 
-    __slots__ = ("word", "closed")
+    __slots__ = ("word", "closed", "start", "end")
 
-    def __init__(self, word, closed):
+    def __init__(self, word, closed, start):
         self.word = word
         self.closed = closed
+        self.start = start
+        self.end = start + len(word)
+
+
+class Clause:
+    """One sentence: its own text, and its own words.
+
+    A shared span is measured inside one clause and never across two, because a
+    run that bridges a full stop is an adjacency rather than a phrase: nobody
+    transcribed *…per marker pair. Registration…*, the two texts merely happen
+    to order their own items the same way.
+    """
+
+    __slots__ = ("text", "tokens", "words")
+
+    def __init__(self, text):
+        self.text = text
+        self.tokens = _tokenize(text)
+        self.words = [token.word for token in self.tokens]
+
+
+class Span:
+    """A run of words a unit's prose and its brief have verbatim in common."""
+
+    __slots__ = ("clause", "start", "length")
+
+    def __init__(self, clause, start, length):
+        self.clause = clause
+        self.start = start
+        self.length = length
+
+    @property
+    def tokens(self):
+        return self.clause.tokens[self.start : self.start + self.length]
+
+    @property
+    def text(self):
+        """The span as the prose wrote it — case, punctuation and all.
+
+        The row prints this rather than the normalised words, because what the
+        author has to go and find is the phrase, and `Nextflow ≥ 25.04.0` is
+        not findable as `nextflow 25.04.0`.
+        """
+        tokens = self.tokens
+        return self.clause.text[tokens[0].start : tokens[-1].end]
+
+    def quote(self):
+        text = " ".join(self.text.split())
+        return text if len(text) <= QUOTE_WIDTH else text[: QUOTE_WIDTH - 1] + "…"
+
+    def carries_content(self):
+        """A run of nothing but function words is grammar rather than
+        transcription. Two content words is the smallest run that could have
+        been lifted."""
+        return sum(1 for token in self.tokens if token.word not in FUNCTION_WORDS) >= 2
+
+    def predicates(self):
+        """The finite-verb test: does this shared span predicate something?
+
+        A closed list plus one guarded morphological rule, and deliberately no
+        more. `-ed` is not a tell — the corpus's own *scale bar required* is an
+        expected span — and a bare `-s` rule fires on every plural noun, which
+        is the failure a legend cannot survive: an instrument that fires forever
+        is an instrument nobody reads.
+        """
+        tokens = self.tokens
+        for index, token in enumerate(tokens):
+            if token.word in FINITE_FORMS:
+                return True
+            if self._third_person_present(tokens, index):
+                return True
+        return False
+
+    @staticmethod
+    def _third_person_present(tokens, index):
+        word = tokens[index].word
+        if len(word) < 4 or not word.endswith("s"):
+            return False
+        if word.endswith(("ss", "us", "is", "ies", "'s", "’s")):
+            return False
+        if index == 0 or index == len(tokens) - 1:
+            return False  # a span's last word has nothing left to predicate about
+        if tokens[index].closed:
+            return False  # punctuation closes an item, so this is its final noun
+        previous = tokens[index - 1].word
+        return previous not in NOT_A_SUBJECT and not previous[0].isdigit()
 
 
 class Brief:
     """One unit's brief: its zones, or the one reason nothing can be measured.
 
     A brief this parser cannot read is reported in the row rather than raised.
-    Every row this instrument owns is reported-only, so raising would make an
+    Every row the brief feeds is reported-only, so raising would make an
     unreadable brief change the exit code — and the brief is an input to a
     prose fact, never to the document the render emits.
     """
@@ -961,6 +1052,10 @@ class Brief:
         self.path = path
         self.zones = zones or {}
         self.problem = problem
+
+    @property
+    def readable(self):
+        return self.problem is None
 
     def zone(self, name):
         return "\n".join(self.zones.get(name, []))
@@ -975,6 +1070,56 @@ class Brief:
             if name in self.zones
         ]
 
+    @property
+    def items(self):
+        """What the brief states, in the order it states them, less the ladder
+        line: `Rung:`, `Closes:`, `Opens:` and `Restates:` carry the unit's
+        relation to the rung above it, and a relation is bookkeeping rather
+        than something the prose must convey.
+
+        The argument zone first, because a unit that is both originating and
+        inventory-carrying is expressible, and its propositions are what its
+        paragraphs are ordered against.
+        """
+        for name, _ in self.reader_facing:
+            lines = [
+                line.strip()
+                for line in self.zones[name]
+                if line.strip() and not RELATION_LINE.match(line.strip())
+            ]
+            items = _sentences(" ".join(lines))
+            if items:
+                return items
+        return []
+
+    def overlap(self, prose_text):
+        """The spans a unit's prose shares with this brief's reader-facing
+        zones, split by the instrument the zone they came from carries.
+
+        The zone decides the instrument, not the unit: `## Argument`'s
+        propositions are phrased as what the reader must accept, so verbatim
+        overlap with one *is* the defect and needs no verb test; an inventory
+        item is a fact the prose must convey, so a shared span is expected
+        unless it predicates.
+        """
+        prose = _clauses(prose_text)
+        flagged = []
+        expected = 0
+        seen = set()
+        for name, zone_text in self.reader_facing:
+            windows = _windows(_clauses(zone_text))
+            for number, clause in enumerate(prose):
+                for span in _shared_spans(windows, clause):
+                    key = (number, span.start, span.length)
+                    if not span.carries_content() or key in seen:
+                        continue
+                    seen.add(key)
+                    if name == ARGUMENT or span.predicates():
+                        flagged.append(span)
+                    else:
+                        expected += 1
+        return flagged, expected
+
 
 def parse_brief(path):
     """The unit's brief, or `None` where the unit has none.
@@ -985,7 +1130,11 @@ def parse_brief(path):
     """
     if not path.exists():
         return None
-    zones = _sections(path.read_text())
+    try:
+        text = path.read_text()
+    except (OSError, UnicodeDecodeError) as error:
+        return Brief(path, problem="cannot be read — %s" % error)
+    zones = _sections(text)
     unparsed = [name for name in zones if name not in BRIEF_ZONES]
     if unparsed:
         return Brief(
@@ -1017,19 +1166,18 @@ def load_briefs(root, skeleton):
 
 
 def _tokenize(text):
-    lowered = text.lower()
     tokens = []
-    for match in TOKEN.finditer(lowered):
+    for match in TOKEN.finditer(text.lower()):
         word = match.group(0).rstrip(TRAILING)
         if not word:
             continue
-        after = lowered[match.end() : match.end() + 1]
+        after = text[match.end() : match.end() + 1]
         closed = (
             bool(match.group(0)[len(word) :])  # the punctuation the word carries
             or after in CLOSING
             or after == ""  # a clause's last word closes on the clause
         )
-        tokens.append(Token(word, closed))
+        tokens.append(Token(word, closed, match.start()))
     return tokens
 
 
@@ -1053,147 +1201,58 @@ def _sentences(text):
 
 
 def _clauses(text):
-    """The text as token lists, one per sentence.
-
-    A shared span is measured inside one sentence and never across two,
-    because a run that bridges a full stop is an adjacency rather than a
-    phrase: nobody transcribed *…per marker pair. Registration…*, the two
-    texts merely happen to order their own items the same way.
-    """
     return [
-        _tokenize(sentence)
+        Clause(sentence)
         for block in _paragraphs(text)
         for sentence in _sentences(block)
     ]
 
 
-def _grams(clauses):
-    """Every `SUBSTANTIAL`-word window in the brief, by the clause it sits in."""
-    grams = {}
-    for words in clauses:
-        for start in range(len(words) - SUBSTANTIAL + 1):
-            grams.setdefault(tuple(words[start : start + SUBSTANTIAL]), []).append(
-                (words, start)
-            )
-    return grams
+def _windows(clauses):
+    """Every `PHRASE_WORDS`-long window of the brief, by the clause it sits in,
+    so a match can be extended along that clause and no further."""
+    windows = {}
+    for clause in clauses:
+        for start in range(len(clause.words) - PHRASE_WORDS + 1):
+            windows.setdefault(
+                tuple(clause.words[start : start + PHRASE_WORDS]), []
+            ).append((clause.words, start))
+    return windows
 
 
-def _shared_spans(grams, prose_words):
-    """Every maximal run of `SUBSTANTIAL` words or more that this clause of the
-    prose shares verbatim with the brief, as index ranges into the clause.
+def _shared_spans(windows, clause):
+    """Every maximal run of `PHRASE_WORDS` words or more that this clause of the
+    prose shares verbatim with the brief.
 
     Word-level rather than character-level, because what this catches is a
     phrase reused, and a phrase survives a re-wrapped line.
     """
     spans = []
+    words = clause.words
     index = 0
-    while index <= len(prose_words) - SUBSTANTIAL:
-        found = grams.get(tuple(prose_words[index : index + SUBSTANTIAL]))
+    while index <= len(words) - PHRASE_WORDS:
+        found = windows.get(tuple(words[index : index + PHRASE_WORDS]))
         if found is None:
             index += 1
             continue
-        longest = SUBSTANTIAL
-        for words, start in found:
-            length = SUBSTANTIAL
+        longest = PHRASE_WORDS
+        for brief_words, start in found:
+            length = PHRASE_WORDS
             while (
-                index + length < len(prose_words)
-                and start + length < len(words)
-                and prose_words[index + length] == words[start + length]
+                index + length < len(words)
+                and start + length < len(brief_words)
+                and words[index + length] == brief_words[start + length]
             ):
                 length += 1
             longest = max(longest, length)
-        spans.append((index, longest))
+        spans.append(Span(clause, index, longest))
         index += longest
     return spans
-
-
-def _substantial(span):
-    return sum(1 for token in span if token.word not in FUNCTION_WORDS) >= 2
-
-
-def _has_finite_verb(span):
-    """The finite-verb test: does this shared span predicate something?
-
-    A closed list plus one guarded morphological rule, and deliberately no
-    more. `-ed` is not a tell — the corpus's own *scale bar required* is an
-    expected span — and a bare `-s` rule fires on every plural noun, which is
-    the failure a legend cannot survive: an instrument that fires forever is an
-    instrument nobody reads.
-    """
-    for index, token in enumerate(span):
-        if token.word in FINITE_FORMS:
-            return True
-        if _third_person_present(span, index):
-            return True
-    return False
-
-
-def _third_person_present(span, index):
-    word = span[index].word
-    if len(word) < 4 or not word.endswith("s"):
-        return False
-    if word.endswith(("ss", "us", "is", "ies", "'s", "’s")):
-        return False
-    if index == 0 or index == len(span) - 1:
-        return False  # a span's last word has nothing left to predicate about
-    if span[index].closed:
-        return False  # punctuation closes an item, so this is its final noun
-    previous = span[index - 1].word
-    return previous not in NOT_A_SUBJECT and not previous[0].isdigit()
-
-
-def _quote(span):
-    text = " ".join(token.word for token in span)
-    return text if len(text) <= 56 else text[:55] + "…"
-
-
-def measure_overlap(brief, prose_text):
-    """The spans a unit's prose shares with its brief's reader-facing zones,
-    split by the instrument the zone they came from carries.
-
-    The zone decides the instrument, not the unit: `## Argument`'s propositions
-    are phrased as what the reader must accept, so verbatim overlap with one
-    *is* the defect and needs no verb test; an inventory item is a fact the
-    prose must convey, so a shared span is expected unless it predicates.
-    """
-    prose = _clauses(prose_text)
-    flagged = []
-    expected = 0
-    seen = set()
-    for name, zone_text in brief.reader_facing:
-        grams = _grams([[token.word for token in clause] for clause in _clauses(zone_text)])
-        for number, clause in enumerate(prose):
-            words = [token.word for token in clause]
-            for start, length in _shared_spans(grams, words):
-                span = clause[start : start + length]
-                if not _substantial(span) or (number, start, length) in seen:
-                    continue
-                seen.add((number, start, length))
-                if name == ARGUMENT or _has_finite_verb(span):
-                    flagged.append(_quote(span))
-                else:
-                    expected += 1
-    return flagged, expected
 
 
 # --------------------------------------------------------------------------
 # paragraph shape — originating units only
 # --------------------------------------------------------------------------
-
-
-def _argument_items(brief):
-    """The brief's propositions, in the order the brief states them.
-
-    Sentences of the `## Argument` zone, less the ladder line: a proposition is
-    phrased as what the reader must end up accepting, which is a sentence, and
-    the relation line is bookkeeping.
-    """
-    lines = [
-        line
-        for line in brief.zones.get(ARGUMENT, [])
-        if line.strip() and not RELATION_LINE.match(line.strip())
-    ]
-    return _sentences(" ".join(line.strip() for line in lines))
 
 
 def _content_words(text):
@@ -1219,15 +1278,17 @@ def _matching_item(paragraph, items):
 
 def _mirrored(paragraphs, items):
     """How many paragraphs sit at the position of the brief item they are
-    about — the one-bullet-per-paragraph walk, counted."""
-    span = min(len(paragraphs), len(items))
-    return (
-        sum(
-            1
-            for index in range(span)
-            if _matching_item(paragraphs[index], items) == index
-        ),
-        span,
+    about — the one-bullet-per-paragraph walk, counted.
+
+    Reported against the unit's own paragraph count, never against the item
+    count: a draft that walks three items and then writes five more paragraphs
+    is not mirroring, and a denominator stopping at the items would never look
+    at the five.
+    """
+    return sum(
+        1
+        for index, paragraph in enumerate(paragraphs)
+        if _matching_item(paragraph, items) == index
     )
 
 
@@ -1269,7 +1330,6 @@ class Measurement:
 
     def __init__(self, text):
         self.kind = REPORTED
-        self.problems = []
         self.text = text
 
     def render(self):
@@ -1367,12 +1427,12 @@ def report_brief_overlap(paper):
         if brief is None:
             absent.append("`%s`" % unit.id)
             continue
-        if brief.problem:
+        if not brief.readable:
             notes.append("%s: %s" % (brief.path.name, brief.problem))
             continue
-        spans, expected_here = measure_overlap(brief, paper.prose_of_unit(unit))
+        spans, expected_here = brief.overlap(paper.prose_of_unit(unit))
         expected += expected_here
-        flagged.extend('%s: "%s"' % (unit.id, span) for span in spans)
+        flagged.extend('%s: "%s"' % (unit.id, span.quote()) for span in spans)
 
     text = "%d flagged, %d expected" % (len(flagged), expected)
     detail = flagged + notes
@@ -1384,8 +1444,8 @@ def report_brief_overlap(paper):
 
 
 def report_paragraph_shape(paper):
-    """Single-sentence body paragraphs, and how far each unit's paragraphs walk
-    its brief's items in order.
+    """Single-sentence body paragraphs, and how many of a unit's paragraphs sit
+    at the position of the brief item they are about.
 
     **Originating units only.** For a non-originating unit both measures
     invert: order tracking the brief is what a venue's field order and a
@@ -1409,18 +1469,22 @@ def report_paragraph_shape(paper):
             if len(_sentences(paragraph)) == 1
         )
         brief = paper.brief_for(unit)
-        if brief is None or brief.problem:
-            notes.append("%s: no brief this parser can read" % unit.id)
+        if brief is None:
+            notes.append("%s: no brief" % unit.id)
             continue
-        items = _argument_items(brief)
+        if not brief.readable:
+            notes.append("%s: %s" % (brief.path.name, brief.problem))
+            continue
+        items = brief.items
         if not items:
-            notes.append("%s: the brief states no proposition" % unit.id)
+            notes.append("%s: the brief states no reader-facing item" % unit.id)
             continue
         if not paragraphs:
             notes.append("%s: no drafted prose" % unit.id)
             continue
-        mirrored, span = _mirrored(paragraphs, items)
-        walks.append("%d of %d (%s)" % (mirrored, span, unit.id))
+        walks.append(
+            "%d of %d (%s)" % (_mirrored(paragraphs, items), len(paragraphs), unit.id)
+        )
 
     text = "single-sentence %d" % len(singles)
     if singles:
@@ -1580,7 +1644,7 @@ def format_report(rows, granularity):
 def run_gate(paper):
     """Every row in registry order, and the failed rows by tier."""
     rows = [(name, Verdict(PASS)) for name in PARSE_ROWS]
-    failed = {HARD: [], GATING: []}
+    failed = {HARD: [], GATING: [], REPORTED: []}
     for name, tier, scope, check in REGISTRY:
         verdict = (
             Verdict.skipped()
@@ -1589,7 +1653,7 @@ def run_gate(paper):
         )
         rows.append((name, verdict))
         if verdict.kind == FAIL:
-            failed[tier].append((name, verdict))  # only a tier with a gate has one
+            failed[tier].append((name, verdict))
     return rows, failed
 
 

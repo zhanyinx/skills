@@ -26,9 +26,10 @@ All are declared inputs at the paper root, beside the source:
 skill owns either file.** A planning ticket creates each; a drafting session may amend its own slot
 only.
 
-The brief is different: this is its only *parser*, but the drafting skill ships its two templates,
-so what this unit fixes is **the six zone headings** and nothing else — a full format spec here
-would be a second artifact recording one fact, which is how the two drift.
+The brief is different: this is its only *parser*, but the drafting skill is the unit that ships its
+two templates, so what this one fixes is **the six zone headings** and nothing else — a full format
+spec here would be a second artifact recording one fact, which is how the two drift. (The templates
+are not built yet; these headings are what they will have to match.)
 
 ```
 ## Argument              ← reader-facing, an originating unit's propositions
@@ -89,8 +90,9 @@ The tier answers one question: **would the render emit something false?**
 - **Submit-gating** iff the render is faithful but the work is unfinished: an unfilled skeleton slot,
   or an unfilled document title.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
-  source, an unclosed comment, a malformed `skeleton.md` or `spine.md`, a declared input that is
-  missing.
+  source, an unclosed comment, a malformed `skeleton.md` or `spine.md`, or either of those two
+  missing — the render cannot run without them. **A missing brief is not in this tier**: it feeds
+  reported rows only, so its absence is a legal state the row states.
 - **Reported** iff it is a prose fact: brief-to-prose overlap, the finite-verb test, single-sentence
   body paragraphs and paragraph order. A reported row **cannot fail and never reaches the exit
   code**, and it carries **no threshold** — turning a prose fact into a floor is what this design
@@ -121,8 +123,8 @@ $ render-paper MANUSCRIPT.working.md --check --section results
   unit / rung pairing       PASS
   originating slot children PASS
   unfilled skeleton slot    FAIL — 1 (`results-accuracy`)
-  brief-to-prose overlap    2 flagged, 1 expected — results: "registration accuracy is credible o…
-  paragraphs (originating)  single-sentence 1 (results ¶2); brief-order 3 of 3 (results)
+  brief-to-prose overlap    1 flagged, 1 expected — results: "Registration accuracy is credible on a metr…"
+  paragraphs (originating)  single-sentence 1 (results ¶2); brief-order 3 of 4 (results)
 
   4 pass, 1 fail, 1 out of scope, 2 reported
   → NOT a claim that this section is finished
@@ -221,8 +223,10 @@ this design was calibrated on shows it happening — the audit's own phrase for 
 
 **A shared span is a run of five words or more that a unit's prose and its brief share verbatim**,
 measured inside one sentence of each and never across two: a run bridging a full stop is an
-adjacency, not a phrase anybody moved. Case and punctuation are ignored, a run of nothing but
-function words is not a phrase, and the match is word-level so a re-wrapped line still matches.
+adjacency, not a phrase anybody moved. Case and punctuation are ignored when matching, a run of
+nothing but function words is not a phrase, and the match is word-level so a re-wrapped line still
+matches. The row then **quotes the span as the prose wrote it** — what the author has to go and find
+is the phrase, and `Nextflow >= 25.04.0` is not findable as `nextflow 25.04.0`.
 
 **The zone the span came from decides the instrument, not the unit:**
 
@@ -257,17 +261,24 @@ Two structural measures, both reported, both **suspended for a non-originating u
 
 - **single-sentence body paragraphs**, attributed to their unit and their position in it;
 - **paragraph order** against the brief's item order — how many paragraphs sit at the position of
-  the brief item they are about, which is the one-bullet-per-paragraph walk, counted.
+  the brief item they are about, which is the one-bullet-per-paragraph walk, counted. It is reported
+  against the unit's **own paragraph count** — never against the item count, and never against the
+  brief's derived paragraph budget: a draft that walks three items and then writes five more
+  paragraphs is not mirroring, a denominator stopping at the items would never look at the five, and
+  a budget is a plan where the paragraphs are the fact.
 
 Both invert for a non-originating unit, which is why neither runs there. Order tracking the brief is
 what a venue's field order and a figure's lettering **mandate**, so it is the requirement rather
 than the defect; and a panel caption is not a unit of argument, so a one-sentence paragraph is its
 normal shape. Run either on a legend and it fires forever. There the finite-verb test carries the
-whole load — which is why a unit whose stated reason has been withdrawn still keeps its conclusion.
+whole load.
 
-A unit's brief items are the sentences of its `## Argument` zone, less the ladder line: `Rung:`,
+A unit's brief items are the sentences of its reader-facing zone, less the ladder line: `Rung:`,
 `Closes:`, `Opens:` and `Restates:` carry the unit's relation to the rung above it, and a relation
-is bookkeeping rather than a proposition.
+is bookkeeping rather than something the prose must convey. `## Argument` is read first, so a unit
+that is **both originating and inventory-carrying** is ordered against its propositions and an
+originating unit whose only reader-facing zone is `## Inventory` is still ordered against its
+items.
 
 **Both rows are per-unit, so neither is ever out of scope.** `--section` narrows them to the one
 unit; whole-document granularity measures every unit and names each in the row.

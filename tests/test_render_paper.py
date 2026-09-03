@@ -180,11 +180,7 @@ class TestSectionGranularity:
     def test_whole_document_rows_are_printed_as_skipped(self, render):
         result = render("clean", "MANUSCRIPT.working.md", "--check", "--section", "methods")
 
-        rows = dict(
-            (line[:27].strip(), line[27:].strip())
-            for line in result.report.splitlines()
-            if line.startswith("  ") and line[2:3] != " "
-        )
+        rows = _rows(result.report)
 
         assert "slot integrity" in rows
         assert rows["slot integrity"] != PASS
@@ -975,7 +971,7 @@ class TestTheOverlapInstrument:
     def test_a_phrase_shared_with_the_argument_zone_is_flagged(self, render):
         result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
 
-        assert 'results: "registration accuracy is credible on a metric' in result.report
+        assert 'results: "Registration accuracy is credible on a metric' in result.report
 
     def test_the_brief_is_a_declared_input_at_the_paper_root(self, paper, run_in):
         where = paper("brief-mirror")
@@ -1013,6 +1009,41 @@ class TestTheOverlapInstrument:
         assert result.exit_code == 0
         assert "no `## Argument` or `## Inventory` zone" in result.report
 
+    def test_the_span_is_quoted_as_the_prose_wrote_it(self, paper, run_in):
+        # What the author has to go and find is the phrase, so the row prints
+        # the prose's own case and punctuation, not the normalised words.
+        where = paper("brief-mirror")
+        brief = where / "briefs" / "availability.md"
+        brief.write_text(
+            brief.read_text().replace(
+                "release notes: the container digest, the tag, and the build date.",
+                "every stage runs under Nextflow >= 25.04.0.",
+            )
+        )
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "The release notes carry the container digest, the tag, and the build date.",
+                "Every stage runs under Nextflow >= 25.04.0.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "availability")
+
+        assert 'availability: "Every stage runs under Nextflow >= 25.04.0"' in result.report
+
+    def test_a_brief_that_cannot_be_read_at_all_is_reported_not_raised(
+        self, paper, run_in
+    ):
+        where = paper("brief-mirror")
+        (where / "briefs" / "results.md").write_bytes(b"# Brief\n\n## Argument\n\xff\xfe\n")
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "Traceback" not in result.report
+        assert "results.md: cannot be read" in result.report
+
     def test_only_a_reader_facing_zone_is_measured(self, paper, run_in):
         # `## Must not claim` is an instruction, and an instruction reaching
         # the prose verbatim is a different defect with a different owner.
@@ -1039,7 +1070,7 @@ class TestTheFiniteVerbTest:
     def test_a_shared_inventory_span_with_a_finite_verb_is_flagged(self, render):
         result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
 
-        assert 'availability: "the container image is freely available' in result.report
+        assert 'availability: "The container image is freely available' in result.report
 
     def test_a_shared_inventory_span_with_no_finite_verb_is_expected(self, render):
         result = render(
@@ -1117,6 +1148,41 @@ class TestParagraphShape:
         assert result.report == golden("brief-mirror-section-check.txt")
         assert "paragraphs (originating)  no originating unit in scope" in result.report
 
+    def test_order_is_reported_against_the_unit_s_own_paragraph_count(
+        self, paper, run_in
+    ):
+        # A draft that walks three items and then writes two more paragraphs is
+        # not mirroring, and a denominator stopping at the items would never
+        # look at the two.
+        where = paper("brief-mirror")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "<!-- slot: availability -->",
+                "Nothing in the crop settles how far the six cases reach.\n\n"
+                "That question is what the next rung inherits.\n\n"
+                "<!-- slot: availability -->",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
+
+        assert "brief-order 3 of 5 (results)" in result.report
+
+    def test_an_originating_unit_carrying_an_inventory_zone_is_still_ordered(
+        self, paper, run_in
+    ):
+        # A unit that is both originating and inventory-carrying is expressible,
+        # and its order is measured against whatever its reader-facing zone
+        # states.
+        where = paper("brief-mirror")
+        brief = where / "briefs" / "results.md"
+        brief.write_text(brief.read_text().replace("## Argument", "## Inventory"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
+
+        assert "brief-order 3 of 3 (results)" in result.report
+
     def test_a_single_sentence_paragraph_is_attributed_to_its_unit(self, render):
         result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
 
@@ -1154,9 +1220,7 @@ class TestParagraphShape:
         result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
 
         assert result.exit_code == 0
-        assert "brief-order not measured (results: no brief this parser can read)" in (
-            result.report
-        )
+        assert "brief-order not measured (results: no brief)" in result.report
 
     def test_both_rows_are_per_unit_and_so_never_out_of_scope(self, render):
         for granularity in ([], ["--section", "results"]):
