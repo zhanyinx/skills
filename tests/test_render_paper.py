@@ -220,6 +220,7 @@ class TestTheCLIContract:
 
         assert result.exit_code == 2
         assert result.document == ""
+        assert "not allowed with" in result.report
 
     def test_clean_is_not_an_output_token(self, render):
         for mode in ("--check", "--circulate", "--submit"):
@@ -609,10 +610,11 @@ class TestScaffold:
         where = paper("clean")
         source = where / "MANUSCRIPT.working.md"
 
-        run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        first_run = run_in(where, "MANUSCRIPT.working.md", "--scaffold", "--section", "methods")
         first = source.read_text()
-        run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        run_in(where, "MANUSCRIPT.working.md", "--scaffold", "--section", "methods")
 
+        assert first_run.exit_code == 0
         assert source.read_text() == first
 
     def test_a_parent_s_own_prose_stays_before_its_first_child_anchor(
@@ -643,7 +645,7 @@ class TestScaffold:
         where = paper("clean")
         source = where / "MANUSCRIPT.working.md"
         skeleton = where / "skeleton.md"
-        run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        run_in(where, "MANUSCRIPT.working.md", "--scaffold", "--section", "methods")
         skeleton.write_text(
             skeleton.read_text().replace(
                 "| methods-registration | 3 | Registration | procedure |",
@@ -652,7 +654,7 @@ class TestScaffold:
             )
         )
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold", "--section", "methods")
         seeded = source.read_text()
 
         assert result.exit_code == 0
@@ -668,9 +670,10 @@ class TestScaffold:
     def test_it_preserves_the_author_facing_comment_channel(self, paper, run_in):
         where = paper("clean")
 
-        run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold", "--section", "methods")
         seeded = (where / "MANUSCRIPT.working.md").read_text()
 
+        assert result.exit_code == 0
         assert "R1 — abstract" in seeded
         assert "confirm the tool list" in seeded
         assert "superseded outline" in seeded
@@ -699,23 +702,68 @@ class TestScaffold:
     def test_it_orders_the_anchors_by_the_skeleton_and_not_by_the_source(
         self, paper, run_in
     ):
+        # The unit is derived from the anchors already there, so a source that
+        # names its own unit needs no `--section`.
+        where = paper("clean")
+        source = where / "methods.md"
+        source.write_text(
+            "<!-- slot: methods-registration -->\n\nRegistration proceeds pairwise.\n\n"
+            "<!-- slot: methods-imaging -->\n\nPanels were acquired per round.\n"
+        )
+
+        result = run_in(where, "methods.md", "--scaffold")
+        seeded = source.read_text()
+
+        assert result.exit_code == 0
+        assert (
+            seeded.index("<!-- slot: methods -->")
+            < seeded.index("<!-- slot: methods-imaging -->")
+            < seeded.index("<!-- slot: methods-registration -->")
+        )
+        assert seeded.index("Panels were acquired") < seeded.index(
+            "Registration proceeds"
+        )
+
+    def test_it_seeds_only_the_unit_its_source_names(self, paper, run_in):
+        # Pre-promotion every unit has its own file, so seeding a slot whose
+        # prose lives in a sibling file is how a source acquires the anchor the
+        # next render calls a duplicate.
         where = paper("pre-promotion")
         source = where / "drafts" / "results.md"
-        source.write_text(
-            "<!-- slot: results -->\n\nThe measurement supports the claim.\n\n"
-            "<!-- slot: abstract -->\n\nWe measure one thing.\n"
-        )
 
         result = run_in(where, "drafts/results.md", "--scaffold")
         seeded = source.read_text()
 
         assert result.exit_code == 0
-        assert seeded.index("<!-- slot: abstract -->") < seeded.index(
-            "<!-- slot: results -->"
-        )
-        assert seeded.index("We measure one thing.") < seeded.index(
-            "The measurement supports the claim."
-        )
+        assert "<!-- slot: results -->" in seeded
+        assert "abstract" not in seeded
+
+    def test_what_the_scaffold_writes_is_what_the_render_reads(
+        self, paper, run_in, golden
+    ):
+        # The anchor the scaffold writes and the anchor the render parses are
+        # one grammar; a seeded paper renders to the same document as the
+        # hand-written one it was seeded from.
+        where = paper("pre-promotion")
+
+        run_in(where, "drafts/abstract.md", "--scaffold")
+        run_in(where, "drafts/results.md", "--scaffold")
+        result = run_in(where, "drafts", "--circulate")
+
+        assert result.exit_code == 0
+        assert result.document == golden("pre-promotion-circulate.md")
+
+    def test_a_seeded_unit_renders_as_holes_rather_than_as_damage(
+        self, paper, run_in
+    ):
+        where = paper("clean")
+
+        run_in(where, "methods.md", "--scaffold", "--section", "methods")
+        result = run_in(where, "methods.md", "--circulate", "--section")
+
+        assert result.exit_code == 1
+        assert "## Methods" in result.document
+        assert "⟦HOLE: prose for methods-imaging⟧" in result.document
 
     def test_it_needs_no_spine(self, paper, run_in):
         # Scaffolding seeds anchors from the skeleton alone; the ladder is the
@@ -742,7 +790,7 @@ class TestScaffold:
         where = paper("fenced")
         source = where / "MANUSCRIPT.working.md"
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold")
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold", "--section", "results")
         seeded = source.read_text()
 
         assert result.exit_code == 0
@@ -823,6 +871,39 @@ class TestScaffoldRefusals:
 
         assert result.exit_code == 2
         assert "one source file" in result.report
+
+    def test_a_source_it_cannot_read_stays_inside_the_exit_code_contract(
+        self, paper, run_in
+    ):
+        # `2` is "the renderer cannot run at all", and an unreadable source is
+        # exactly that — never a traceback, which no caller can read.
+        import os
+
+        import pytest
+
+        if os.geteuid() == 0:
+            # Root reads it anyway, so the refusal cannot be provoked — and a
+            # check that never looked is never silently a pass.
+            pytest.skip("running as root")
+        where = paper("clean")
+        source = where / "MANUSCRIPT.working.md"
+        source.chmod(0o000)
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--scaffold", "--section", "methods")
+        source.chmod(0o644)
+
+        assert result.exit_code == 2
+        assert "cannot be read" in result.report
+
+    def test_a_source_it_cannot_write_stays_inside_it_too(self, paper, run_in):
+        where = paper("clean")
+
+        result = run_in(
+            where, "MANUSCRIPT.working.md/nope.md", "--scaffold", "--section", "methods"
+        )
+
+        assert result.exit_code == 2
+        assert "cannot be written" in result.report
 
     def test_a_fresh_source_with_no_named_unit_asks_for_one(self, paper, run_in):
         where = paper("clean")

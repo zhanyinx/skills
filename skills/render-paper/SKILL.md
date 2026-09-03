@@ -30,7 +30,7 @@ file.** A planning ticket creates each; a drafting session may amend its own slo
 render-paper <source> --circulate            emit a circulatable document
 render-paper <source> --submit               emit a submittable one, or refuse
 render-paper <source> --check                run the gate only; emit no document
-render-paper <source> --scaffold             pre-seed a unit's anchors into its source
+render-paper <source> --scaffold             pre-seed one unit's anchors into its source
                       --section [<unit>]     modifier: section granularity
 ```
 
@@ -41,8 +41,9 @@ render-paper <source> --scaffold             pre-seed a unit's anchors into its 
 `--section` takes a unit — one top-level skeleton slot and its subtree. Bare `--section` derives the
 unit from the source's anchors, and says so if the source anchors more than one.
 
-`--scaffold` is the one mode that **writes the source** rather than reading a finished one: see
-*The scaffold* below.
+`--scaffold` is the one mode that **writes the source** rather than reading a finished one, and the
+one that takes `--section` as the **name of a unit** rather than as a granularity: it seeds one unit
+and only one. See *The scaffold* below.
 
 **The document goes to stdout. The verdict table and every diagnostic go to stderr.** So
 `render-paper MANUSCRIPT.working.md --circulate > MANUSCRIPT.md` writes the render and leaves the
@@ -129,21 +130,31 @@ injection, one level down.
   the new slot's anchor and moves no prose.
 - **A parent slot may bear prose**, so scaffolding a parent with children seeds the parent's anchor,
   then its children's: the parent's own prose is whatever ends up before the first child anchor.
-- **Scope.** `--section <unit>` seeds that unit's subtree; bare `--section` derives the unit from
-  the anchors already in the source; no `--section` seeds every slot in the skeleton, which is what
-  a promoted single-file manuscript wants. A slot already anchored is kept even when it sits outside
-  the scope — the scaffold seeds one unit and never drops another's prose.
+- **It is always one unit**, because that is what a drafting session opens. `--section <unit>`
+  names it; with no `--section`, the unit is **derived from the anchors already in the source**, and
+  a source that does not name exactly one is refused rather than guessed at. Seeding a slot whose
+  prose lives in another unit's file is how a source acquires the anchor the next render calls a
+  duplicate, so the scaffold never reaches outside the unit's subtree.
+- **A slot already anchored is kept even when it sits outside that subtree.** Post-promotion the
+  source is one file holding every unit, so dropping them would delete another unit's prose to seed
+  this one's.
 - **The source is rewritten in place**, and created when it does not exist yet. Nothing goes to
   stdout, and there is no verdict table: the scaffold runs no check, because it emits no document
-  that could be false. Everything but the anchors' order is kept verbatim, **the author-facing
-  comment channel included** — the comment strip belongs to the render, and a mode that rewrites the
-  source must not take an author's notes with it.
+  that could be false. What sits between the anchors is kept verbatim — **the author-facing comment
+  channel included**, because the comment strip belongs to the render and a mode that rewrites the
+  source must not take an author's notes with it. Only the anchors' order and the blank lines
+  between the blocks are the scaffold's to set. Text before the source's **first** anchor belongs to
+  no slot, exactly as the render reads it, and stays at the head of the file — so a comment written
+  there is a note on the file, never on the slot that happens to follow it.
 - **The ladder is not read.** `spine.md` is the gate's input; the anchors come from the skeleton
   alone, and a declared input with no use here would be a refusal of a legal state.
 - **Wherever it would have to guess, it refuses and writes nothing**: a slot anchored twice, an
-  anchor naming no skeleton slot, prose sitting outside every slot, a directory in place of a
-  source. Each is already a hard error at the gate, and a guess would move or merge prose the author
-  never asked it to touch.
+  anchor naming no skeleton slot, prose sitting outside every slot, a source naming no single unit,
+  a directory in place of a source. The first three are the gate's own facts, read by **the gate's
+  own predicate**, so the scaffold cannot refuse what the gate would pass; and a guess would move or
+  merge prose the author never asked it to touch.
+- **Its exit codes are the same contract minus the gate** — `0`, `2` for a refusal, `3` for a parse
+  error, and never `1`: there is no gate here to fail.
 
 ## Construction duties
 
