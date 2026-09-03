@@ -93,7 +93,7 @@ IDENTIFIER = r"[A-Za-z0-9_](?:[A-Za-z0-9_:.#$%&+?<>~/-]*[A-Za-z0-9_])?"
 # in the back matter hard-errors against a key nobody wrote.
 REFERENCE = re.compile(r"(?<![\w@])@(%s)" % IDENTIFIER)
 CITATION_GROUP = re.compile(r"\[\s*@%s(?:\s*;\s*@%s)*\s*\]" % (IDENTIFIER, IDENTIFIER))
-BRACKET_SPAN = re.compile(r"\[[^\[\]]*\]", re.DOTALL)
+BRACKET = re.compile(r"[\[\]]")
 
 # A figure lives in the same namespace behind the same `@`, and `figures and
 # panels` owns resolving it. Here it is only ever *not a citation key*: the
@@ -703,6 +703,14 @@ def parse_bibtex(text, path):
                 "%s: `@%s{` opens an entry with no citation key"
                 % (_where(path, line), match.group(1))
             )
+        if key in entries:
+            # Two entries under one key make every citation of it ambiguous,
+            # and silently keeping the last one picks a source on the author's
+            # behalf.
+            raise ParseError(
+                "%s: `%s` is the key of more than one entry"
+                % (_where(path, line), key)
+            )
         entries[key] = _bib_fields(fields, path, line)
 
 
@@ -762,10 +770,15 @@ def _bib_value(body, cursor, path, line):
 
 def _bib_text(value):
     """A field value as prose: the render is not a LaTeX engine, so this is a
-    light touch — the protective braces dropped, the common accent commands
-    dropped with them, an en-dash range spelled as one."""
+    light touch — the protective braces dropped, and the common accent commands
+    dropped with them.
+
+    Nothing else is rewritten. BibTeX's `--` becomes an en dash in a page range
+    and only there, because a DOI is the one field that must survive
+    byte-exact and DOIs do contain double hyphens.
+    """
     value = re.sub(r"\\[`'\"^~=.]\s*", "", value)
-    return _collapse(value.replace("{", "").replace("}", "").replace("--", "–"))
+    return _collapse(value.replace("{", "").replace("}", ""))
 
 
 def format_reference(number, key, entry):
@@ -786,7 +799,8 @@ def format_reference(number, key, entry):
     if entry.get("volume"):
         container = ("%s %s" % (container, entry["volume"])).strip()
     if entry.get("pages"):
-        container = "%s:%s" % (container, entry["pages"]) if container else entry["pages"]
+        pages = entry["pages"].replace("--", "–")
+        container = "%s:%s" % (container, pages) if container else pages
     if entry.get("year"):
         container = ("%s (%s)" % (container, entry["year"])).strip()
     segments = [
@@ -795,11 +809,18 @@ def format_reference(number, key, entry):
         container,
         "doi:%s" % entry["doi"] if entry.get("doi") else entry.get("url", ""),
     ]
-    line = ". ".join(part for part in segments if part) + "."
-    # A segment may already end in a full stop — an initial does, and so does an
-    # abbreviated journal name — so the separator is collapsed rather than a
-    # segment trimmed, which would eat the initial's own stop.
-    return "%d. %s" % (number, re.sub(r"\.(\s*\.)+", ".", line))
+    # A segment may already end in its own punctuation — an initial does, an
+    # abbreviated journal name does, and a title may end in `?` or an ellipsis —
+    # so the separator is withheld rather than added and collapsed after, which
+    # would eat the ellipsis it was collapsing.
+    line = ""
+    for part in segments:
+        if not part:
+            continue
+        if line and line[-1] not in ".?!…":
+            line += "."
+        line = "%s %s" % (line, part) if line else part
+    return "%d. %s" % (number, line if line[-1:] in ".?!…" else line + ".")
 
 
 def _authors(author):
@@ -1229,30 +1250,48 @@ def _join_reasoning(braces, keyed, path, advisories):
 
 
 def _refuse_bracket_spans(bare, path, fenced):
-    """Outside every comment and every fence, a `[…]` span in prose must be a
-    citation group. Anything else is a parse error.
+    """Outside every comment and every fence, **every bracket character in
+    prose must belong to a citation group.** Anything else is a parse error.
+
+    The rule is stated over the characters rather than over `[…]` spans,
+    because a span rule leaks twice: the outer pair of `[[@smith2020]]` is not
+    part of any span, and an unclosed `[` never forms one at all — so both
+    reach reader-facing prose as free text.
 
     The permissive form — *a `[…]` span is legal iff it contains an `@key`* —
-    was rejected for a specific reason: it admits `[verify this @smith2020]`,
-    which renders as *(verify this Smith 2020)*. That is a free-text channel
-    into reader-facing prose, which is the failure class this whole clause
-    exists to close, re-opened inside the clause closing it.
+    was rejected for the same reason one layer up: it admits
+    `[verify this @smith2020]`, which renders as *(verify this Smith 2020)*.
+    That is a free-text channel into reader-facing prose, which is the failure
+    class this whole clause exists to close, re-opened inside the clause
+    closing it.
 
-    The refusal costs nothing on real text. Over the calibration corpus's 73
-    bracket spans, 40 are citations and 33 are author-facing annotations that
-    now live in the annotation channel — **zero** are markdown links, footnotes
-    or any other legitimate use.
+    The refusal costs nothing on real text. Outside comments the calibration
+    corpus held **70 bracket spans: 40 citations, 30 author-facing annotations,
+    and zero other legitimate uses** — no markdown link, no reference link, no
+    footnote in 74 KB of biomedical prose.
     """
-    for match in BRACKET_SPAN.finditer(bare):
-        if _inside(fenced, match.start()):
-            continue
-        if CITATION_GROUP.fullmatch(match.group(0)):
+    groups = [
+        (match.start(), match.end())
+        for match in CITATION_GROUP.finditer(bare)
+        if not _inside(fenced, match.start())
+    ]
+    for match in BRACKET.finditer(bare):
+        if _inside(fenced, match.start()) or _inside(groups, match.start()):
             continue
         raise ParseError(
             "%s: `%s` is not a citation group — brackets group `@key` "
             "references separated by `; ` and contain nothing else"
-            % (_where(path, _line_of(bare, match.start())), _collapse(match.group(0)))
+            % (_where(path, _line_of(bare, match.start())), _quote_bracket(bare, match.start()))
         )
+
+
+def _quote_bracket(bare, start):
+    """The malformed span, as much of it as there is: to its closing bracket
+    when it has one, and to the end of its paragraph when it does not."""
+    end = bare.find("\n\n", start)
+    end = len(bare) if end < 0 else end
+    close = bare.find("]", start + 1)
+    return _collapse(bare[start : close + 1 if 0 <= close < end else end])
 
 
 def _cited(bare, start, end, block, path, fenced):
@@ -2997,22 +3036,36 @@ def _resolve_citations(prose, numbers):
     number it might have written wrong — wrong-but-valid, and invisible to
     every check — is a thing it cannot type.
 
-    Two token classes are stepped over. A gap token's label is author-facing
-    text the render has already substituted into the prose, so a key inside one
-    is not a citation of this document; and a `@fig:` identifier belongs to the
-    figure namespace, which resolves elsewhere.
+    Three things are stepped over. A gap token's label is author-facing text
+    the render has already substituted into the prose, so a key inside one is
+    not a citation of this document. Inside a fence nothing is parsed at all,
+    here as everywhere else — a source showing the syntax is showing it, not
+    using it. And a `@fig:` identifier belongs to the figure namespace, which
+    resolves elsewhere.
+
+    A mixed group resolves **per key, not per token**: the citations take their
+    numbers and the figure names stay visible. Leaving the whole token verbatim
+    would drop a real citation out of the reference list while the gate went on
+    demanding an entry for it.
     """
+    fenced = _fenced_spans(prose)
 
     def resolve(match):
         token = match.group(0)
-        if match.group("gap"):
+        if match.group("gap") or _inside(fenced, match.start()):
             return token
         keys = REFERENCE.findall(token)
-        if any(key.startswith(FIGURE_PREFIX) for key in keys):
+        cited = [key for key in keys if not key.startswith(FIGURE_PREFIX)]
+        if not cited:
             return token
-        for key in keys:
+        for key in cited:
             numbers.setdefault(key, len(numbers) + 1)
-        return "[%s]" % ",".join(str(numbers[key]) for key in keys)
+        if len(cited) == len(keys):
+            return "[%s]" % ",".join(str(numbers[key]) for key in keys)
+        return "[%s]" % "; ".join(
+            "@%s" % key if key.startswith(FIGURE_PREFIX) else str(numbers[key])
+            for key in keys
+        )
 
     return CITATION_TOKEN.sub(resolve, prose)
 

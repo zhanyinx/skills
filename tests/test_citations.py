@@ -154,6 +154,44 @@ def test_a_bracket_span_inside_a_fence_is_not_refused(paper, run_in):
     assert result.exit_code == 0, result.report
 
 
+def test_a_nested_bracket_pair_is_refused(paper, run_in):
+    """The rule is stated over bracket *characters*, not over `[…]` spans: the
+    outer pair of `[[@key]]` belongs to no span, so a span rule would let it
+    through into reader-facing prose."""
+    live = paper(CASE)
+    rewrite(live, "[@gatenbee2023]", "[[@gatenbee2023]]")
+    result = run_in(live, "MANUSCRIPT.working.md", "--check")
+    assert result.exit_code == 3
+
+
+def test_an_unclosed_bracket_is_refused(paper, run_in):
+    """It never forms a span at all, which is the second leak in a span rule —
+    and the free text after it reaches the reader either way."""
+    live = paper(CASE)
+    rewrite(live, "[@gatenbee2023]", "[author to supply: the arm")
+    result = run_in(live, "MANUSCRIPT.working.md", "--check")
+    assert result.exit_code == 3
+    assert "author to supply: the arm" in result.report
+
+
+def test_a_citation_inside_a_fence_is_neither_resolved_nor_checked(paper, run_in):
+    """Inside a fence nothing is parsed at all — here as everywhere else. A
+    source showing the syntax is showing it, not using it, so an example key
+    must not take a number, enter the reference list, or be demanded of the
+    bibliography."""
+    live = paper(CASE)
+    rewrite(
+        live,
+        "The pipeline runs as five stages",
+        "```\nrender-paper cite [@nosuchkey2099] and @alsomissing\n```\n\n"
+        "The pipeline runs as five stages",
+    )
+    result = run_in(live, "MANUSCRIPT.working.md", "--circulate")
+    assert result.exit_code == 0, result.report
+    assert "[@nosuchkey2099] and @alsomissing" in result.document
+    assert "nosuchkey2099" not in result.document.split("## References", 1)[1]
+
+
 def test_a_bracket_span_wrapping_lines_is_still_one_span(paper, run_in):
     """Span-based parsing, never line-anchored."""
     live = paper(CASE)
@@ -243,6 +281,29 @@ def test_a_malformed_bibliography_is_a_parse_error(paper, run_in):
     result = run_in(live, "MANUSCRIPT.working.md", "--check")
     assert result.exit_code == 3
     assert "references.bib" in result.report
+
+
+def test_one_key_on_two_entries_is_a_parse_error(paper, run_in):
+    """Every citation of that key would be ambiguous, and keeping the last one
+    silently picks a source on the author's behalf."""
+    live = paper(CASE)
+    bib = live / "references.bib"
+    bib.write_text(bib.read_text() + "\n@misc{hickey2022, title = {A second one}}\n")
+    result = run_in(live, "MANUSCRIPT.working.md", "--check")
+    assert result.exit_code == 3
+    assert "more than one entry" in result.report
+
+
+def test_a_doi_survives_byte_exact(paper, run_in):
+    """BibTeX's `--` becomes an en dash in a page range and only there. A DOI
+    does contain double hyphens, and it is the one field that must not be
+    rewritten."""
+    live = paper(CASE)
+    bib = live / "references.bib"
+    bib.write_text(bib.read_text().replace("10.1038/s41592-021-01316-y", "10.1000/xy--z"))
+    result = run_in(live, "MANUSCRIPT.working.md", "--circulate")
+    assert result.exit_code == 0, result.report
+    assert "doi:10.1000/xy--z" in result.document
 
 
 # --------------------------------------------------------------------------
