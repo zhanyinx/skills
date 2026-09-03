@@ -15,12 +15,13 @@ and is consumed only from here.
 
 ## The files it reads
 
-All are declared inputs at the paper root, beside the source:
+All four are declared inputs at the paper root, beside the source:
 
 - [`skeleton.md`](SKELETON-FORMAT.md) — the heading tree, its order and levels, the roster, the
   document title and the venue limit.
 - [`spine.md`](SPINE-FORMAT.md) — the claim ladder: the central claim, and one rung per unit.
 - `briefs/<unit>.md` — one brief per unit, read by the overlap instrument.
+- `references.bib` — the author's reference library. See [the citation surface](CITATIONS.md).
 
 `render-paper` is the only parser of the first two, which is why it documents their formats. **No
 skill owns either file.** A planning ticket creates each; a drafting session may amend its own slot
@@ -48,6 +49,10 @@ raised: the brief feeds reported rows only, so an unreadable one must not change
 **An absent brief is a legal state.** Briefs arrive as units are planned, and the row names the units
 that have none rather than counting them as nothing to report.
 
+The bibliography is different in kind: it is **author-owned**, in a format this unit did not
+invent, and the render **reads it and never writes it**. Absence is a legal state — a paper citing
+nothing has nothing to resolve.
+
 ## The channel it reads inside the source
 
 [The annotation channel](ANNOTATION-CHANNEL.md) — `{{ … }}` **must** appear in the render, an HTML
@@ -58,6 +63,16 @@ the two file formats are documented here: `render-paper` is the channel's only p
 {{ [!] [SLOT:] [@owner] <label> }}      ! is the gate bit; bare is a HOLE; SLOT: is a venue field
 <!-- !@owner <label> -->                SILENT; in the manifest iff it opens with `!` or `@`
 ```
+
+## The reference surface inside the source
+
+[The citation surface](CITATIONS.md) — `@key` narratively, `[@key]` parenthetically, `[@a; @b]`
+grouped, and **inside brackets nothing but keys and `;`**. A source references by **stable key and
+never by number**; the render assigns the numbers by first mention and builds the reference list
+from the cited keys.
+
+Outside comments and fences, **every other `[…]` span in prose is a parse error** — the calibration
+that makes that affordable, and the whole cost of it, are in that document.
 
 ## Modes
 
@@ -98,15 +113,19 @@ The tier answers one question: **would the render emit something false?**
 
 - **Hard error, both modes** iff the emitted document is not the document the source describes: an
   anchor naming a slot the skeleton does not carry, one slot anchored twice, prose sitting outside
-  every slot, a unit and its rung not pairing 1:1, an originating unit bearing children.
+  every slot, a unit and its rung not pairing 1:1, an originating unit bearing children, a citation
+  key with no bibliography entry.
 - **Submit-gating** iff the render is faithful but the work is unfinished: an open annotation
   carrying the gate bit, an unfilled skeleton slot, an unfilled document title, a debt the ladder
   never closes, a debt closed before it is opened.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
-  source, an unclosed comment, a malformed or unclosed brace, a malformed `skeleton.md` or
-  `spine.md`, a declared input that is missing. **Only a brace can refuse, never a comment** — a
-  parse error is for what the source cannot express into *reader-facing* prose, and a comment never
-  reaches the reader.
+  source, an unclosed comment, a malformed or unclosed brace, a bracket in prose outside a citation
+  group, a malformed `skeleton.md`, `spine.md` or `references.bib`, a missing `skeleton.md` or
+  `spine.md`. **Only a brace or a bracket can refuse, never a comment** — a parse error is for what
+  the source cannot express into *reader-facing* prose, and a comment never reaches the reader.
+  A **missing `references.bib` is not** a parse error: the library is required by the citations
+  rather than by the renderer, so it is the hard error above, and a paper citing nothing needs no
+  library at all.
 - **Reported** iff the fact is worth an author's attention and no exit code: the em-dash count, the
   prose diagnostics, and the locality test. **A reported row never changes the exit code**, in any
   mode — see below.
@@ -186,7 +205,7 @@ input to a diff-relative judgement axis. See [the channel](ANNOTATION-CHANNEL.md
 - **A row is never printed without a check behind it.** The registry grows as the checks are built;
   a row with nothing behind it would read as a pass, which is the defect this table exists to kill.
 
-The three parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
+The parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
 failure suppresses the table.
 
 ## The reported tier
@@ -382,12 +401,17 @@ injection, one level down.
    children renders its heading and lets the children carry the prose.
 6. **Emit the manifest.** Every open annotation, grouped by `@owner` so it is sendable, recomputed
    from the source on every render so it cannot go stale.
+7. **Resolve the references.** Citations by **first-mention order in the assembled document**, and
+   the reference list built from the **cited keys** — so an orphaned entry is impossible by
+   construction rather than checked for. The bibliography is read from its declared path and never
+   contained. At `--section` granularity every token is left **unresolved and visible**, and no
+   placeholder form is invented. See [the citation surface](CITATIONS.md).
 
 ## What it must not do
 
-- Hold any paper-specific text. No bibliography, no section names, no per-paper fixes. Every
-  judgement fix is written back into the **source**, never encoded in the generator: a fix that lives
-  in the generator regresses the moment the generator stops being run.
+- Hold any paper-specific text. No bibliography, no section names, no venue citation style, no
+  per-paper fixes. Every judgement fix is written back into the **source**, never encoded in the
+  generator: a fix that lives in the generator regresses the moment the generator stops being run.
 - Create any annotation **in the source**. It renders a gap as a token; it never writes one. The
   creation-rights grid is in [the channel](ANNOTATION-CHANNEL.md): `write-paper` may create all
   three behaviours, `review-paper` may create `SILENT` only, and the render and the assembler create

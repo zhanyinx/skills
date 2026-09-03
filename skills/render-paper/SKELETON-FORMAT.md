@@ -104,7 +104,7 @@ order, and never in the source.
 - **per-unit word budgets** — one budget per unit, and children get none, so a per-block allocation
   has nowhere to be written
 - **citation anchors** and **the bibliography** — the bibliography is an author-owned declared input
-  at its own path
+  at its own path, `references.bib` at the paper root; see [the citation surface](CITATIONS.md)
 - **the sheds list** — content explicitly leaving a unit
 
 All four are brief contents. **The skeleton names the total; the brief spends it.**
