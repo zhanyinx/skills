@@ -1,13 +1,21 @@
-  skeleton / spine grammar  PASS
-  source grammar            PASS
-  brace grammar             PASS
-  slot integrity            PASS
-  unit / rung pairing       PASS
-  originating slot children PASS
-  annotations (gating)      PASS
-  unfilled skeleton slot    PASS
+  skeleton / spine grammar        PASS
+  source grammar                  PASS
+  brace grammar                   PASS
+  slot integrity                  PASS
+  unit / rung pairing             PASS
+  originating slot children       PASS
+  annotations (gating)            PASS
+  unfilled skeleton slot          PASS
+  chain bookkeeping               PASS
+  debt precedence                 PASS
+  em dashes (threshold 0)         PASS — 0
+  single-sentence body paragraphs 1 in 1 originating unit (line 8)
+  adversative ratio               0 of 6 sentences (0%)
+  subject openings                6 used once (of 6 sentences)
+  sentence length                 mean 13.7, CV 0.22, 0% over 35 words (6 sentences)
+  locality test                   4 units, 6 slots, 2 cross-unit edges (abstract restates results; `D1` introduction→results)
 
-  8 pass, 0 fail, 0 out of scope
+  11 pass, 0 fail, 0 out of scope, 5 reported
   → NOT a claim that this document is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit

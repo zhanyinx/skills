@@ -27,6 +27,19 @@ def warnings_of(report):
     return report.split("warnings —", 1)[1].split("--submit refused", 1)[0]
 
 
+def verdict_of(report, name):
+    """One verdict-table row's verdict, by row name.
+
+    The golden files pin the table's exact formatting, which is where
+    formatting-as-interface belongs; a row assertion here should survive a
+    column-width change rather than restate it.
+    """
+    for line in report.splitlines():
+        if line.startswith("  %s " % name):
+            return line[2 + len(name) :].strip()
+    return None
+
+
 def owners_in(report):
     """The `@owner` group headings of a manifest, in the order they print."""
     return [
@@ -323,7 +336,9 @@ class TestTheSubmitRefusal:
     def test_the_open_bits_are_a_printed_row_of_the_verdict_table(self, render):
         result = render("annotations", SOURCE, "--check")
 
-        assert "annotations (gating)      FAIL — 3" in result.report
+        assert verdict_of(result.report, "annotations (gating)").startswith(
+            "FAIL — 3"
+        )
 
 
 class TestSpanBasedParsing:
@@ -516,7 +531,9 @@ class TestTheVerifyFlag:
         result = run_in(where, SOURCE, "--check")
 
         assert "six paired fractions" not in manifest_of(result.report)
-        assert "annotations (gating)      FAIL — 2" in result.report
+        assert verdict_of(result.report, "annotations (gating)").startswith(
+            "FAIL — 2"
+        )
 
 
 class TestTheDirectionalClause:
@@ -766,7 +783,7 @@ class TestSectionGranularity:
         result = render("annotations", SOURCE, "--check", "--section", "back-matter")
 
         assert result.exit_code == 0
-        assert "annotations (gating)      PASS" in result.report
+        assert verdict_of(result.report, "annotations (gating)") == "PASS"
 
     def test_the_manifest_still_enters_whole(self, render):
         result = render("annotations", SOURCE, "--check", "--section", "back-matter")

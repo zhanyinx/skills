@@ -162,3 +162,18 @@ it adds the new slot's anchor and moves no prose.
 **Escalated to a `task` ticket that blocks the draft ticket:** reordering slots, changing an existing
 slot's level, removing a slot, renaming a slot that other prose points at, a figure split another
 unit references, reordering a legend's declaration block.
+
+Because it is mechanical it is a check, and it prints as the **reported** `locality test` row:
+
+```
+  locality test             4 units, 6 slots, 2 cross-unit edges (abstract restates results; `D1` introduction→results)
+```
+
+The render never sees a proposed amendment, so what the row reports is what the two files fix before
+one is proposed: **the tree an amendment would move**, and **the coupling** that decides which side
+of the rule a move falls on. A unit's own subtree is its to amend; the tree's order and levels are
+nobody's alone; and every edge leaving a unit — a debt it opens that another unit closes, a rung in
+another unit it restates — is a tie an amendment cannot move on its own. The two lists above stay
+the rule; the row is the paper's own numbers against it.
+
+It **reports rather than gates**: a coupled argument is what a ladder *is*, not a defect in one.
