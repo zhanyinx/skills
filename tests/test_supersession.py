@@ -228,12 +228,31 @@ class TestTheFiveStructuralLosses:
         assert "vanished" in verdict
         assert "the registration preset" in verdict
 
+    def test_a_gate_bit_annotation_deleted_in_place_is_reported(
+        self, versioned, run_in
+    ):
+        """The marker taken out and no value put in: the paragraph survives
+        word for word, and the claim now rests on nothing.
+
+        This is the shape the class is really about. The old side's prose
+        already carries the brace blanked, so a supplied value is the one thing
+        that leaves the paragraph longer — and this revision leaves it exactly
+        as long.
+        """
+        root, ref = versioned(CASE)
+        revise(root, "the %s arm" % HOLE, "the arm")
+
+        result = run_in(root, SOURCE, "--check", "--section", UNIT, "--supersedes", ref)
+
+        verdict = row(result.report, ROW)
+        assert "vanished" in verdict
+        assert "the registration preset" in verdict
+
     def test_a_gate_bit_annotation_closed_by_substitution_is_not_a_loss(
         self, versioned, run_in
     ):
         """Substituting the real value **is** the closure — there is no
-        `RESOLVED` marker and no tombstone — so the sentence stands and nothing
-        was lost."""
+        `RESOLVED` marker and no tombstone — so nothing was lost."""
         root, ref = versioned(CASE)
         revise(root, HOLE, "medium-preset")
 
@@ -241,6 +260,26 @@ class TestTheFiveStructuralLosses:
 
         verdict = row(result.report, ROW)
         assert "vanished" not in verdict
+        assert "no structural loss" in verdict
+
+    def test_a_renamed_heading_is_not_a_lost_one(self, versioned, run_in):
+        """A block **is** a slot: the skeleton owns the words and the render
+        injects them on every pass, so a rename is the same block under a new
+        name. Diffing the rendered words instead would call every rename a
+        loss."""
+        root, ref = versioned(CASE)
+        skeleton = root / "skeleton.md"
+        skeleton.write_text(
+            skeleton.read_text().replace(
+                "| methods-registration | 3 | Registration |",
+                "| methods-registration | 3 | Image registration |",
+            )
+        )
+
+        result = run_in(root, SOURCE, "--check", "--section", UNIT, "--supersedes", ref)
+
+        verdict = row(result.report, ROW)
+        assert "heading" not in verdict
         assert "no structural loss" in verdict
 
     def test_every_class_reports_at_once(self, versioned, run_in):
@@ -411,6 +450,40 @@ class TestTheOldSideComesFromGit:
 
         verdict = row(result.report, ROW)
         assert "unavailable" not in verdict
+        assert "no structural loss" in verdict
+
+    def test_the_old_side_is_the_source_that_anchors_the_unit(
+        self, versioned, commit, run_in
+    ):
+        """The realistic post-promotion shape: at the old ref the manuscript
+        **already exists**, holding the units promoted before this one, while
+        this unit's prose is still in its draft.
+
+        Picking the old side by existence renders a manuscript that anchors
+        nothing for the unit, and a body of zero words reports as no loss at
+        all — the drop-guard handing back a silent all-clear. So the source that
+        anchors the unit is the one that decides.
+        """
+        root, _first = versioned("pre-promotion")
+        (root / SOURCE).write_text((root / "drafts" / "abstract.md").read_text())
+        (root / "drafts" / "abstract.md").unlink()
+        ref = commit(root, "the abstract promoted; results still a draft")
+
+        (root / SOURCE).write_text(
+            "%s\n\n%s"
+            % (
+                (root / SOURCE).read_text(),
+                (root / "drafts" / "results.md").read_text(),
+            )
+        )
+        shutil.rmtree(root / "drafts")
+
+        result = run_in(
+            root, SOURCE, "--check", "--section", "results", "--supersedes", ref
+        )
+
+        verdict = row(result.report, ROW)
+        assert words_in(verdict)[0] > 0
         assert "no structural loss" in verdict
 
 

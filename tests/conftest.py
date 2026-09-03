@@ -119,6 +119,23 @@ def versioned(paper):
     return make
 
 
+@pytest.fixture
+def commit():
+    """Commit a versioned paper's working tree, and return the ref it closed at.
+
+    A second commit, for the shape where the old ref is not the first state a
+    paper was ever in: a unit revised after its neighbours were already
+    promoted.
+    """
+
+    def make(root, message="a later state"):
+        git(root, "add", "-A", "-f")
+        git(root, "commit", "-qm", message)
+        return git(root, "rev-parse", "HEAD").strip()
+
+    return make
+
+
 def git(root, *args):
     """One git command inside a paper, or an assertion failure naming it."""
     proc = subprocess.run(
