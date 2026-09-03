@@ -1,130 +1,133 @@
 ---
 name: assemble-paper
-description: "Stitch independently-drafted sections and figure legends of a manuscript into one continuously-readable document — resolving transitions, redundant seams, and voice/terminology drift between sections — without altering claims, evidence, or citations. Use once all section drafts exist and before the final /review-paper pass over the whole manuscript."
+description: "Promote independently-drafted sections into one annotated working manuscript, then make the one editorial pass that reads the whole document end to end — cross-section repetition, repeated caveats and contribution framing, term drift, missing connective logic — without altering claims, evidence, or citations. Runs once, after every section and legend draft has closed. Writes the source; it does not produce the reader-facing document, which /render-paper does."
 disable-model-invocation: true
 ---
 
-Assemble the independently-drafted sections and figure legends of a manuscript into a
-single, continuously-readable document — smoothing the seams between them without
-touching what they say.
+`assemble-paper` has two jobs and no others: it **promotes** the drafted units into one annotated
+working manuscript, once and irreversibly, and it makes **the one editorial pass that reads the whole
+document end to end**.
+
+It holds no mechanical duty that another unit could disagree with it about. Concatenation, heading
+injection, numbering and the reference list all belong to `render-paper`; it holds no spine
+authority; it creates no annotation.
 
 ## Why this exists
 
-`/write-paper` drafts one seam — a section or paragraph-cluster — at a time, deliberately:
-each session sees only its own brief, which is what keeps drafting focused. The cost is
-that no session reads the whole manuscript end-to-end, so sections can land with problems
-that only exist *between* them: one section pre-summarizes what the next immediately says,
-the same concept gets named two different ways in two sections, "as described above" points
-at nothing once the final order is fixed, or two sections simply sit back-to-back with no
-connective logic. This is the one pass that reads the whole thing and fixes exactly that
-layer — nothing else.
+The cut this pass makes — the same fact stated in full in three units — is the one defect in the
+whole pipeline that nothing else can reach, and the reason is structural rather than a matter of
+diligence:
 
-For this person specifically, the highest-value catch at this stage is usually **cross-section
-repetition**: a fact, a caveat, or a piece of motivating context stated in full in one section
-recurs, restated rather than referenced, in a later section. Because `/write-paper` drafts
-each section in isolation, a session drafting the registration section has no visibility
-into the fact that the protocol section already explained why DAPI is a shared anchor, and
-independently re-derives the same explanation. Individually reasonable, collectively bloated
-— this is the single most common and most consequential edit at assembly time, more so than
-any individual sentence's phrasing.
+- **A drafting session cannot see it.** A `write-paper` session receives the ladder, its own brief
+  and the sources that brief cites, and never another unit's prose. So a session drafting the
+  registration unit has no visibility into the protocol unit already having explained why DAPI is
+  the shared anchor, and independently re-derives it. Individually reasonable, collectively bloated.
+- **A review cannot fix it.** `review-paper` may only write `SILENT` annotations, which emit
+  nothing. De-duplication **is a cut**, and a skill that cannot change what the reader sees cannot
+  make one.
 
-## What this is not
-
-Not a rewrite, and not a review. `/review-paper`'s Fidelity, Craft, and cross-reference axes
-still run afterward, over the assembled whole — this skill doesn't replace or duplicate
-that judgement, it just produces the single document for that pass to run over. Never adds,
-cuts, or reinterprets a claim, a citation, or evidence — if a seam can't be smoothed without
-changing what a section asserts, flag it; don't resolve it in favor of flow.
+So the detection and the cut stay in one place. Splitting them would recreate exactly the
+overlapping ownership this pipeline is built to avoid.
 
 ## Process
 
 ### 1. Pin the manuscript order
 
-Take the section/figure-legend order from the map or outline that generated the drafts
-(e.g. a wayfinder map's structure ticket). If no order is already fixed, ask before
-assembling.
+Take the order from `skeleton.md`, which is authoritative. It is not a question to ask and not a
+thing to infer from the filesystem: an absent or unreadable `skeleton.md` is a hard error, and
+`render-paper` reports it as one.
 
-### 2. Concatenate
+### 2. Read the whole document
 
-Bring the drafts together in that order into one working document.
+`render-paper drafts/ --circulate` emits the whole piece as a reader meets it — in the skeleton's
+order, headings injected, the comment channel stripped — and its verdict table says on the way
+whether the sources parse and every unit pairs with its rung. Read that document; make the pass
+against it.
 
-### 3. Fix each seam
+This is the only pass anyone makes over the whole piece with the whole piece in front of them.
+Sampling it unit by unit is the exact vantage point every drafting session already had, and the
+defects below are invisible from there.
 
-At every boundary between two originally-separate drafts, and scanning the whole
-document for anything that spans more than one boundary:
+### 3. Make the editorial pass
 
-- **Redundant restatement** — the end of one section previews what the next section
-  immediately says. Cut the thinner restatement, keep the fuller original.
-- **Cross-section repetition** — the same fact, mechanism, or explanation is stated in full
-  more than once across sections (not just at an adjacent boundary — this pattern shows up
-  pages apart, e.g. a protocol detail explained in Background, restated near-verbatim in
-  Implementation, and restated again in Results). Keep the fullest, most appropriately-placed
-  version — usually the first — and replace every later instance with a short callback
-  ("as described above," "the shared DAPI channel introduced above") that carries only the
-  one clause actually needed for the local sentence to make sense. Do not simply shorten each
-  restatement in place; check first whether the later section needs the fact restated at all,
-  or only needs to refer to it.
-- **Repeated caveat or scope statement** — a limitation, a caveat, or a piece of framing
-  ("this is concordance among proxies, not validation," "we make no claim of absolute-fraction
-  agreement") is restated in full every time it becomes relevant again, rather than stated
-  once and referenced. State it fully at its first, most natural occurrence; every later
-  recurrence should be a brief pointer, not a re-statement of the full reasoning.
-- **Repeated contribution framing** — more than one section independently flags the same
-  material as the paper's central/headline/load-bearing contribution. This is not wrong at
-  any single occurrence, but stacked across sections it reads as the piece repeatedly telling
-  the reader how to feel about itself. Keep at most one clear statement of what the central
-  contribution is (Abstract and/or Conclusions is usually the right home); in sections that
-  describe the mechanism itself (Implementation, Results), let the description carry its own
-  weight rather than re-flagging it as "the" contribution each time.
-- **Term drift** — the same concept named differently across sections. If a wayfinder map's `## Style` section pins the term, use that; otherwise pick the term established earliest in the piece and hold it constant, flagging the choice if it isn't obvious which term should win.
-- **Missing or dangling transition** — two sections land with no connective logic
-  between them. Add one connecting sentence or clause. Don't invent a claim to bridge
-  them — if there's no real logical link, flag it as a structural gap rather than
-  forcing one.
-- **Dangling pointers** — "as shown above" / "described in Methods" that don't resolve
-  once sections sit in final order. Fix the pointer, or flag it if it can't be resolved
-  without content from a section not yet drafted.
-- **Heading and numbering consistency** — renumber citations, figures, and figure panels
-  to match first-mention order in the final assembled sequence. Sections drafted in
-  isolation almost always number independently (each brief's own "citation 1," "Fig. 1"),
-  so this is expected work, not an edge case: walk the assembled document in order,
-  reassign each citation/figure/panel the number matching where it's *first* mentioned,
-  and propagate every renumbering to all its later mentions and to the reference list /
-  figure legends. This is mechanical — do it, don't just flag it. `/review-paper`'s
-  cross-reference step re-checks the result afterward as a final, independent pass.
-  Note that a figure can legitimately be *introduced* in one section (e.g. a schematic
-  panel shown in Implementation) and *revisited* for additional panels later (e.g. its
-  quantitative panels shown in Results) — this is not a numbering problem as long as the
-  figure's first mention, wherever it falls, is the one that fixes its number.
+Scan the whole document, not just the boundaries — the highest-value catches sit pages apart. Fixes
+are written back into the sources under `drafts/`, never into a render.
 
-### 4. Mark what changed
+- **Redundant restatement** — the end of one unit previews what the next immediately says. Cut the
+  thinner restatement, keep the fuller original.
+- **Cross-section repetition** — the same fact, mechanism, or explanation stated in full more than
+  once across units. This is the highest-value catch at this stage, and it is the one thing no other
+  unit can see. Keep the fullest, most appropriately-placed version — usually the first — and
+  replace every later instance with a short callback that **names the proposition, never the
+  section**: "the shared DAPI anchor" or "reproducibility by construction", never "as described
+  above" or "as described in Implementation". Check first whether the later unit needs the fact
+  restated at all or only needs to refer to it; do not simply shorten each restatement in place.
+- **Repeated caveat or scope statement** — a limitation or piece of framing restated in full every
+  time it becomes relevant. State it fully at its first, most natural occurrence — "the comparison
+  is between two proxies for the same quantity, measured on the same sections" — and let every later
+  recurrence be a brief pointer naming the proposition, "the proxy-to-proxy comparison". A caveat is
+  written as a positive statement of scope; it never denies a frame, because the denial plants the
+  frame it exists to keep out of the reader's head.
+- **Repeated contribution framing** — more than one unit independently flags the same material as
+  the paper's central contribution. Not wrong at any single occurrence, but stacked across units it
+  reads as the piece repeatedly telling the reader how to feel about itself. Keep at most one clear
+  statement.
+- **Term drift** — the same concept named differently across units. If the map's `## Style` section
+  pins the term via its `terms` list, use that; otherwise pick the term established earliest and
+  hold it constant, flagging the choice if it isn't obvious which should win.
+- **Missing or dangling connective logic** — two units land with no logical link. Add one connecting
+  clause that names the proposition being carried forward. Don't invent a claim to bridge them — if
+  there's no real link, flag it as a structural gap.
 
-Keep a visible, running list distinguishing:
-- fixes made silently (a cut redundant sentence, an added connective phrase, a repeated
-  caveat trimmed to a callback) — mechanical, no judgement call, no need to flag
-  individually in the final list beyond the log, and
-- anything flagged instead of fixed (an ambiguous term choice, a missing logical link, a
-  contradiction surfaced between sections, a repetition where it's unclear which instance
-  should survive) — the person decides these, not this skill.
+**The callback names the proposition and never the container.** A callback that names a section is
+meta-narration of exactly the kind the drafting rules ban, and a de-duplication pass that emits one
+per cut converts repetition into a table of contents in prose — which is a worse defect, not a
+smaller one. Test: delete every section name from the manuscript and reshuffle it; a legal callback
+still parses.
 
-### 5. Save and hand off
+### 4. Promote, then hand off
 
-Save the assembled manuscript as a single file. Then run `/review-paper` with the assembled
-whole as the fixed point — this is the unit its Fidelity, Craft, and cross-reference passes
-should run over, not any individual section draft.
+Write the annotated working manuscript to `MANUSCRIPT.working.md` — the whole manuscript in the
+skeleton's order, annotations intact, anchors and no headings.
+
+**This is a promotion, and it is irreversible.** `drafts/` and `briefs/` freeze as history, and
+re-assembly from sections is no longer possible. From now on a new section is drafted straight into
+the working manuscript at its slot. The cost is accepted deliberately: everything after assembly is
+genuinely whole-document work, and a through-line cannot be revised across thirteen files.
+
+Then hand off:
+
+```
+render-paper MANUSCRIPT.working.md --circulate > MANUSCRIPT.md
+```
+
+and run `/review-paper` over that render, with the whole-document checks now in scope rather than
+printing `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`.
 
 ## Boundaries
 
-- Never alters a claim, adds a citation, or touches evidence — that's `/write-paper`'s
-  territory during drafting, not this skill's during assembly. Renumbering an existing
-  citation/figure to fix first-mention order is not covered by this — the reference
-  itself, and what it supports, stays untouched; only its number changes.
-- Never resolves a genuine contradiction between two sections by silently picking a side —
-  flag it (this is `/review-paper`'s Buried Contradiction, surfaced early rather than left
-  for that pass to find cold).
-- Trimming a repeated restatement to a callback is a flow fix, not a claim change, as long
-  as the surviving instance still says everything the trimmed one asserted. If the two
-  instances actually differ in what they claim (not just how fully they restate it), that's
-  a contradiction to flag, not a repetition to trim.
-- Runs once, after every section/legend draft has closed. Re-run only if a later edit
-  reopens more than one section at a time.
+- **Never alters a claim, adds a citation, or touches evidence.** Trimming a repeated restatement to
+  a callback is a flow fix, not a claim change — as long as the surviving instance still says
+  everything the trimmed one asserted. If the two instances differ in what they *claim*, that is a
+  contradiction to flag, not a repetition to trim.
+- **Never resolves a genuine contradiction by silently picking a side.** Flag it.
+- **Holds no spine authority whatsoever** — not the seam check, not the chain walk, not the ladder.
+  The seam check belongs to the drafting session, the bookkeeping walk to `render-paper`, and the
+  discharge question to `review-paper`'s Fidelity axis.
+- **Creates no annotation.** It reads the channel and writes prose; every `HOLE`, `SLOT` and
+  `SILENT` it finds is carried into the working manuscript untouched.
+- **Renumbers nothing, and checks no heading.** Citations and figures resolve by first-mention
+  order, panels by legend declaration order, headings are injected from the skeleton on every pass,
+  and the reference list is built from cited keys — all of it in the render, none of it here.
+- **Reads only `terms` from the map's `## Style` section**, for the term-drift bullet. It owns none
+  of the voice tiers.
+- **Runs once**, after every section and legend draft has closed. There is no second run, because
+  after promotion there are no sections left to assemble.
+
+## Vocabulary
+
+*unit* — one top-level skeleton slot and its subtree; the thing a rung, a brief, a `draft` ticket and
+a word budget all key on, 1:1. *slot* — a section position in the heading tree; note the deliberate
+collision with `SLOT:` inside an annotation brace, which marks a venue back-matter field instead.
+*proposition* — one item of a brief's argument zone, and the thing a callback names. *promotion* —
+the one-way move from `drafts/<unit>.md` to `MANUSCRIPT.working.md` as the source.
