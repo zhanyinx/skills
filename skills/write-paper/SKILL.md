@@ -62,7 +62,21 @@ Also identify, if they exist:
   user-level default file, and **print it at session start with each value's provenance**. Say which
   state you are in: **stanza found, found empty, or running on skill defaults.** The echo is a
   session-time report, never written into the source. If `## Style` names a Tier 2 craft invariant as
-  a key, **stop and ask** — do not draft.
+  a key, **stop and ask** — do not draft. [`STYLE-STANZA.md`](STYLE-STANZA.md) holds the schema, the
+  values-blank exemplar and the composition rules; four of them bind every session:
+
+  - **Discovery is an ordered list, first hit wins** — `~/.agents/style/academic-writing.md`, then
+    `~/.claude/style/academic-writing.md`. The vendor-neutral root is first so an installer who has
+    only `~/.claude/` is not silently in the absent case.
+  - **The key set is closed** — `active-we`, `plain-words`, `build-in-steps`, `spelling-variant`,
+    `em-dash-threshold`, `terms`. An effort wanting anything else writes **prose**, which is advisory
+    to you and never machine-read. A closed set is what makes the invariant collision decidable at
+    load instead of a judgement call.
+  - **Compose by key, never wholesale** — a scalar **overrides**, a list **unions**, prose is
+    **additive**. An effort states only its deltas, because one that had to restate every preference
+    it still wanted would silently revert each one it forgot.
+  - **`em-dash-threshold` is a finite non-negative integer** — no `off`, no `none`, no `∞`. An effort
+    may raise the bar visibly; it cannot remove the gate.
 - **The evidence base** — the actual data, figures, statistics, or source material each section will
   need to represent faithfully. A claim with no evidence base behind it is a claim to flag, not to
   invent support for.
@@ -330,7 +344,10 @@ venue's house style — and it is exactly what `## Style` is for.
 Nothing in Tier 3 is invented here, and **no filled Tier 3 value ships with this skill.** A shipped
 default voice is one person's house style with the authorship filed off, installed on everyone who
 never edits the file, so a preference in force always traces to the effort's `## Style` or to the
-user-level default file and never to here.
+user-level default file and never to here. What ships instead is
+[`STYLE-STANZA.md`](STYLE-STANZA.md): the **keyed schema** — names, domains and tiers — and a
+**values-blank exemplar**, with one worked example labelled as an example and never as a default.
+The exemplar carries no values because neutral-looking ones would re-create the leak one level down.
 
 ## Residual risks
 
