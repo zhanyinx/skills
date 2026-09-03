@@ -1,12 +1,17 @@
-  skeleton / spine grammar  PASS
-  source grammar            PASS
-  slot integrity            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
-  unit / rung pairing       PASS
-  originating slot children PASS
-  unfilled skeleton slot    PASS
-  chain bookkeeping         SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
-  debt precedence           SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
-  locality test             SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  skeleton / spine grammar        PASS
+  source grammar                  PASS
+  slot integrity                  SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  unit / rung pairing             PASS
+  originating slot children       PASS
+  unfilled skeleton slot          PASS
+  chain bookkeeping               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  debt precedence                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  em dashes (threshold 0)         PASS — 0
+  single-sentence body paragraphs 0 in 0 originating units
+  adversative ratio               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  5 pass, 0 fail, 4 out of scope, 0 reported
+  6 pass, 0 fail, 7 out of scope, 1 reported
   → NOT a claim that this section is finished
