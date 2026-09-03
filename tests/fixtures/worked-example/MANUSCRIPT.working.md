@@ -1,7 +1,7 @@
 <!--
 The worked example, after.
 
-`before/results-discussion.md` is the same two units as they were drafted under the old design.
+`before.md` is the same two units as they were drafted under the old design.
 This is what they become under the new one, and the two files are the fixed points the
 before/after deltas are measured between.
 

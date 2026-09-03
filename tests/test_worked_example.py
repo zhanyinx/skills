@@ -16,10 +16,9 @@ section's.
 manuscript held elsewhere and cannot be a fixture here, which is the same call
 `skills/render-paper/SKILL.md` already records for the residue calibration and
 `tests/fixtures/residue-calibration` for its own near misses. What is
-reproduced is the *event*: the same two units, carrying the same defect classes
-at the same counts, transposed onto the neutral cyclic-imaging domain the other
-fixtures already use. The five deltas are the ones the ticket names, and they
-are exact.
+reproduced is the *event*, transposed onto the neutral cyclic-imaging domain
+the other fixtures already use: the same two units, carrying the same defect
+classes, at the counts below.
 
 | property | before | after |
 |---|---|---|
@@ -29,6 +28,18 @@ are exact.
 | bracket spans that are not citations | 8 | 0 |
 | negated frames | 2 | 0 |
 | adversative connectives | 0 | 4 |
+
+**Those counts are exact, and they are the only ones that are.** The first five
+are the ticket's; the sixth is the side effect the worked example recorded, and
+it falls out of the redraft rather than being aimed at. Three further rows of
+the worked example's own table are *not* carried, because they are properties
+of a manuscript's length rather than of a defect class and transposing them
+would mean padding prose to hit a word count: body words (1,887 to 1,626), the
+brief's length (~1,900 words to 172), and the nine undifferentiated gaps
+resolving to six HOLEs, one SILENT and two relocations. The fixture's before
+text carries six gaps, so the relocation half of that last row is not shown
+here at all. Nothing in the ticket asks for the three, and this module claims
+none of them.
 
 **Two kinds of assertion, and the difference is the point.** The counts above
 are measured by this module directly, with its own patterns, because the before
@@ -40,8 +51,8 @@ exactly as every other test here does it.
 **Eight of the fourteen audit defect classes are prevented by construction**,
 and for those the assertion is the refusal, never a count of zero — a count of
 zero says the text happens not to carry the defect, and a parse error says the
-source cannot express it. `PREVENTED_BY_CONSTRUCTION` names the eight and how
-each is prevented; `THE_OTHER_SIX` names the rest and who owns them, so the
+source cannot express it. `RENDER_PAPER_PREVENTS` names the eight and how
+each is prevented; `OWNED_ELSEWHERE` names the rest and who owns them, so the
 roll-call is complete on the page rather than implied.
 """
 
@@ -74,6 +85,14 @@ CITATION_GROUP = re.compile(r"^\[@[A-Za-z0-9_:.\-]+(?:\s*;\s*@[A-Za-z0-9_:.\-]+)
 # and a named smell `review-paper` carries, and neither is mechanical, so this
 # is a measurement of two known constructions and not a lint.
 NEGATED_FRAME = re.compile(r",\s+not\s+(?:an?|the)?\s*\w+")
+
+# The two the before text carries, quoted. The pattern above is deliberately
+# broad and would report a zero for many reasons; these say which two
+# constructions actually left.
+THE_TWO_NEGATED_FRAMES = (
+    "this is concordance among proxies, not validation against a ground truth",
+    "The comparison reported here is internal, not a benchmark against competing pipelines",
+)
 ADVERSATIVE = re.compile(r"\b(?:although|whereas)\b", re.IGNORECASE)
 
 
@@ -101,9 +120,16 @@ def row(report, name):
     return None
 
 
-def with_defect(paper, old, new, source=AFTER):
-    """Give the after text one defect from the before text, in place."""
-    path = paper / source
+def rewrite(paper, old, new):
+    """Give the after text one defect from the before text, and hand the paper
+    back so a call can sit inside the invocation it sets up.
+
+    Named as `tests/test_figures.py` and `tests/test_citations.py` name it. The
+    anchor must be unique, because every anchor here has a twin inside a
+    comment and a comment is exempt from all of these — which is the exemption
+    worth pinning, and a silent match on the wrong one would pin nothing.
+    """
+    path = paper / AFTER
     text = path.read_text()
     assert text.count(old) == 1, "the anchor must be unique: %r" % old
     path.write_text(text.replace(old, new))
@@ -115,9 +141,13 @@ def with_defect(paper, old, new, source=AFTER):
 # --------------------------------------------------------------------------
 
 # The audit's fourteen defect classes, split by who prevents each. Eight land
-# on `render-paper` alone; the spec's traceability table is the source, and the
-# split is what "eight of the fourteen become impossible by construction"
-# means.
+# on `render-paper` alone, and the spec's traceability table is the source.
+#
+# **Eight land here; six of the eight are impossible.** The two counts are not
+# the same claim and the table keeps them apart, because collapsing them is how
+# a gate comes to be described as a guarantee. `1b` and `1c` land on
+# `render-paper` alone and are still expressible: the source can write them and
+# the render says so. Six cannot be written at all.
 #
 # `how` is what this module asserts for that class, and the three values are
 # not interchangeable:
@@ -128,7 +158,7 @@ def with_defect(paper, old, new, source=AFTER):
 #               input, so the defect has no surface to arrive on.
 PARSE, GATING, STRUCTURAL = "parse", "gating", "structural"
 
-PREVENTED_BY_CONSTRUCTION = {
+RENDER_PAPER_PREVENTS = {
     "0": (STRUCTURAL, "whole-piece review returned CLEAN"),
     "1a": (PARSE, "inline annotations in improvised bracket syntaxes"),
     "1b": (GATING, "raw untagged holes"),
@@ -139,10 +169,10 @@ PREVENTED_BY_CONSTRUCTION = {
     "6c": (STRUCTURAL, "orphaned reference entries"),
 }
 
-# The other six. Named here so the roll-call is complete: this module asserts
-# what `render-paper` does for each, which for most of them is to measure
-# rather than to refuse.
-THE_OTHER_SIX = {
+# The rest. Named here so the roll-call is complete: this module asserts what
+# `render-paper` does for each, which for most of them is to measure rather
+# than to refuse.
+OWNED_ELSEWHERE = {
     "3": "rationale leak — `write-paper` constructs, `review-paper` re-derives",
     "4": "paragraphs mirror brief bullets — `write-paper`; measured here, never gated",
     "5": "flat rhythm — a blocking em-dash count, and diagnostics that never gate",
@@ -156,9 +186,22 @@ def test_the_roll_call_is_eight_of_fourteen():
     """Eight of the fourteen land on `render-paper` alone. The claim is only
     worth making if the module says which eight, so the table is asserted
     rather than described."""
-    assert len(PREVENTED_BY_CONSTRUCTION) == 8
-    assert len(PREVENTED_BY_CONSTRUCTION) + len(THE_OTHER_SIX) == 14
-    assert not set(PREVENTED_BY_CONSTRUCTION) & set(THE_OTHER_SIX)
+    assert len(RENDER_PAPER_PREVENTS) == 8
+    assert len(RENDER_PAPER_PREVENTS) + len(OWNED_ELSEWHERE) == 14
+    assert not set(RENDER_PAPER_PREVENTS) & set(OWNED_ELSEWHERE)
+
+
+def test_six_of_those_eight_are_impossible_and_two_are_merely_gated():
+    """The distinction the ticket's phrase elides, kept explicit.
+
+    `PARSE` and `STRUCTURAL` are impossibility: the source cannot express it,
+    or there is nothing to express. `GATING` is a refusal a source can still
+    trip, and calling it prevention would claim more than the mechanism does.
+    """
+    dispositions = [how for how, _ in RENDER_PAPER_PREVENTS.values()]
+
+    assert sum(1 for how in dispositions if how in (PARSE, STRUCTURAL)) == 6
+    assert sum(1 for how in dispositions if how == GATING) == 2
 
 
 # --------------------------------------------------------------------------
@@ -191,7 +234,11 @@ class TestTheBeforeTextCarriesWhatItWasMeasuredWith:
         assert len(bracket_spans(reader_facing(paper(CASE), BEFORE))) == 8
 
     def test_two_negated_frames(self, paper):
-        assert len(NEGATED_FRAME.findall(reader_facing(paper(CASE), BEFORE))) == 2
+        text = reader_facing(paper(CASE), BEFORE)
+
+        assert len(NEGATED_FRAME.findall(text)) == 2
+        for frame in THE_TWO_NEGATED_FRAMES:
+            assert frame in " ".join(text.split())
 
     def test_the_drafting_notes_sit_in_the_reader_facing_stream(self, paper):
         """`1a`'s worst instance: not an annotation but a whole block of
@@ -215,7 +262,15 @@ class TestTheRedraftCarriesNoneOfThem:
         assert bracket_spans(reader_facing(paper(CASE), AFTER)) == []
 
     def test_no_negated_frames(self, paper):
-        assert NEGATED_FRAME.findall(reader_facing(paper(CASE), AFTER)) == []
+        """`NEGATED_FRAME` is broad — it matches any trailing *"…, not X"* —
+        so the zero is backed by the two named constructions as well as by the
+        pattern. The pattern alone would be a weak guarantee; the quotes say
+        which two shapes left."""
+        text = " ".join(reader_facing(paper(CASE), AFTER).split())
+
+        assert NEGATED_FRAME.findall(text) == []
+        for frame in THE_TWO_NEGATED_FRAMES:
+            assert frame not in text
 
 
 class TestTheAdversativeCountMovedAsAConsequence:
@@ -335,9 +390,9 @@ def test_the_parse_tier_classes_cannot_be_written(
     zero says this text happens not to carry the defect; exit 3 says no text
     can.
     """
-    assert PREVENTED_BY_CONSTRUCTION[defect_class][0] == PARSE
+    assert RENDER_PAPER_PREVENTS[defect_class][0] == PARSE
 
-    result = run_in(with_defect(paper(CASE), anchor, defect), AFTER, "--circulate")
+    result = run_in(rewrite(paper(CASE), anchor, defect), AFTER, "--circulate")
 
     assert result.exit_code == 3
     assert refusal in result.report
@@ -352,13 +407,15 @@ class TestTheBareHolesClassIsGatedRatherThanRefused:
     HOLE = ("corresponding fall in the residual error.", "residual error of order of XX.")
 
     def test_the_row_fails_and_names_the_token(self, paper, run_in):
-        result = run_in(with_defect(paper(CASE), *self.HOLE), AFTER, "--check")
+        assert RENDER_PAPER_PREVENTS["1b"][0] == GATING
+
+        result = run_in(rewrite(paper(CASE), *self.HOLE), AFTER, "--check")
 
         assert row(result.report, "bare holes").startswith("FAIL — 1")
         assert "`XX`" in row(result.report, "bare holes")
 
     def test_circulate_still_emits_with_the_hole_in_it(self, paper, run_in):
-        result = run_in(with_defect(paper(CASE), *self.HOLE), AFTER, "--circulate")
+        result = run_in(rewrite(paper(CASE), *self.HOLE), AFTER, "--circulate")
 
         assert "of order of XX" in result.document
 
@@ -378,12 +435,14 @@ class TestTheWorkflowPhraseClassIsTheOneSoftenedRow:
     )
 
     def test_it_warns_under_circulate(self, paper, run_in):
-        result = run_in(with_defect(paper(CASE), *self.PHRASE), AFTER, "--circulate")
+        assert RENDER_PAPER_PREVENTS["1c"][0] == GATING
+
+        result = run_in(rewrite(paper(CASE), *self.PHRASE), AFTER, "--circulate")
 
         assert row(result.report, "workflow phrases").startswith("WARN — 1")
 
     def test_it_fails_the_submit_question(self, paper, run_in):
-        result = run_in(with_defect(paper(CASE), *self.PHRASE), AFTER, "--check")
+        result = run_in(rewrite(paper(CASE), *self.PHRASE), AFTER, "--check")
 
         assert row(result.report, "workflow phrases").startswith("FAIL — 1")
 
@@ -405,12 +464,18 @@ class TestOrphanedReferenceEntriesHaveNoSurfaceToArriveOn:
         "}\n"
     )
 
-    def test_an_uncited_entry_never_reaches_the_reference_list(self, paper, run_in):
+    def over_provisioned(self, paper):
+        """The fixture with one more entry in its library than the document
+        cites."""
         home = paper(CASE)
-        bibliography = home / "references.bib"
-        bibliography.write_text(bibliography.read_text() + self.ORPHAN)
+        library = home / "references.bib"
+        library.write_text(library.read_text() + self.ORPHAN)
+        return home
 
-        result = run_in(home, AFTER, "--circulate")
+    def test_an_uncited_entry_never_reaches_the_reference_list(self, paper, run_in):
+        assert RENDER_PAPER_PREVENTS["6c"][0] == STRUCTURAL
+
+        result = run_in(self.over_provisioned(paper), AFTER, "--circulate")
 
         assert "Never referenced by this document" not in result.document
         assert result.document.count("\n1. ") == 1
@@ -418,11 +483,7 @@ class TestOrphanedReferenceEntriesHaveNoSurfaceToArriveOn:
     def test_and_it_raises_nothing(self, paper, run_in):
         """An over-provisioned library is legal. The check has no second half
         and must not grow one."""
-        home = paper(CASE)
-        bibliography = home / "references.bib"
-        bibliography.write_text(bibliography.read_text() + self.ORPHAN)
-
-        result = run_in(home, AFTER, "--check")
+        result = run_in(self.over_provisioned(paper), AFTER, "--check")
 
         assert row(result.report, "citation → bib entry") == "PASS"
 
@@ -435,6 +496,8 @@ class TestThereIsNoCleanVerdictToReturn:
     output means finished."""
 
     def test_a_section_render_says_which_checks_never_looked(self, render):
+        assert RENDER_PAPER_PREVENTS["0"][0] == STRUCTURAL
+
         result = render(CASE, AFTER, "--check", "--section", "results-discussion")
 
         skipped = [
@@ -494,11 +557,15 @@ class TestTheClassesAnotherUnitOwns:
             assert not row(result.report, name).startswith(("PASS", "FAIL", "WARN"))
         assert "6 reported" in result.report
 
-    def test_the_supersession_diff_is_not_this_regression(self):
-        """`6a`: reconstructed from git across two drafts, which a fixture pair
-        does not have. It is a finding rather than a gate, and it belongs to
-        its own ticket."""
-        assert "6a" in THE_OTHER_SIX
+    def test_the_supersession_diff_has_no_row_yet(self, render):
+        """`6a`: reconstructed across two drafts from the history, which a
+        fixture pair does not have. It is a finding rather than a gate and it
+        belongs to its own ticket, so the registry carries no row for it — and
+        a row is never printed without a check behind it."""
+        result = render(CASE, AFTER, "--check")
+
+        assert "6a" in OWNED_ELSEWHERE
+        assert row(result.report, "supersession diff") is None
 
     def test_no_sentence_names_a_container_to_close_a_debt(self, paper):
         """`6b`: `S3` makes the container the illegal object. Naming a
