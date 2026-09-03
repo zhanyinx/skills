@@ -15,13 +15,15 @@ and is consumed only from here.
 
 ## The files it reads
 
-All four are declared inputs at the paper root, beside the source:
+All five are declared inputs at the paper root, beside the source:
 
 - [`skeleton.md`](SKELETON-FORMAT.md) — the heading tree, its order and levels, the roster, the
   document title and the venue limit.
 - [`spine.md`](SPINE-FORMAT.md) — the claim ladder: the central claim, and one rung per unit.
 - `briefs/<unit>.md` — one brief per unit, read by the overlap instrument.
 - `references.bib` — the author's reference library. See [the citation surface](CITATIONS.md).
+- each roster row's **legend file**, at the path that row declares, for the `## Panels` block that
+  fixes the panel names and their letters. See [figures and panels](FIGURES.md).
 
 `render-paper` is the only parser of the first two, which is why it documents their formats. **No
 skill owns either file.** A planning ticket creates each; a drafting session may amend its own slot
@@ -113,8 +115,9 @@ The tier answers one question: **would the render emit something false?**
 
 - **Hard error, both modes** iff the emitted document is not the document the source describes: an
   anchor naming a slot the skeleton does not carry, one slot anchored twice, prose sitting outside
-  every slot, a unit and its rung not pairing 1:1, an originating unit bearing children, a citation
-  key with no bibliography entry.
+  every slot, a figure or panel name absent from the roster and every legend, a roster name nothing
+  in the document points at, a unit and its rung not pairing 1:1, an originating unit bearing
+  children, a citation key with no bibliography entry.
 - **Submit-gating** iff the render is faithful but the work is unfinished: an open annotation
   carrying the gate bit, an unfilled skeleton slot, an unfilled document title, a debt the ladder
   never closes, a debt closed before it is opened, a bare hole left in reader-facing prose, or
@@ -125,9 +128,11 @@ The tier answers one question: **would the render emit something false?**
   [the two residue lints](#the-two-residue-lints) for why that row alone is softened.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
   source, an unclosed comment, a malformed or unclosed brace, a bracket in prose outside a citation
-  group, a malformed `skeleton.md`, `spine.md` or `references.bib`, a missing `skeleton.md` or
-  `spine.md`. **Only a brace or a bracket can refuse, never a comment** — a parse error is for what
-  the source cannot express into *reader-facing* prose, and a comment never reaches the reader.
+  group, a [reference literal](FIGURES.md#the-parse-errors) — a parenthesised panel letter, a
+  `Fig`-plus-number form, or a positional name — a malformed `skeleton.md`, `spine.md`,
+  `references.bib` or legend declaration block, a missing `skeleton.md` or `spine.md`. **Only a
+  brace, a bracket or a literal can refuse, never a comment** — a parse error is for what the source
+  cannot express into *reader-facing* prose, and a comment never reaches the reader.
   A **missing `references.bib` is not** a parse error: the library is required by the citations
   rather than by the renderer, so it is the hard error above, and a paper citing nothing needs no
   library at all.
@@ -165,7 +170,8 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   source grammar                  PASS
   brace grammar                   PASS
   citation group                  PASS
-  slot integrity                  SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  reference literals              PASS
+  slot / roster integrity         SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   citation → bib entry            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   unit / rung pairing             PASS
   originating slot children       PASS
@@ -176,13 +182,14 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   chain bookkeeping               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   debt precedence                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   em dashes (threshold 0)         FAIL — 2 (line 26)
+  brief-to-prose overlap          0 flagged, 2 expected
   single-sentence body paragraphs 0 in 0 originating units
   adversative ratio               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  9 pass, 2 fail, 8 out of scope, 1 reported
+  10 pass, 2 fail, 8 out of scope, 2 reported
   → NOT a claim that this section is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit
@@ -500,11 +507,16 @@ injection, one level down.
    children renders its heading and lets the children carry the prose.
 6. **Emit the manifest.** Every open annotation, grouped by `@owner` so it is sendable, recomputed
    from the source on every render so it cannot go stale.
-7. **Resolve the references.** Citations by **first-mention order in the assembled document**, and
-   the reference list built from the **cited keys** — so an orphaned entry is impossible by
-   construction rather than checked for. The bibliography is read from its declared path and never
-   contained. At `--section` granularity every token is left **unresolved and visible**, and no
-   placeholder form is invented. See [the citation surface](CITATIONS.md).
+7. **Resolve the references.** Citations and figures by **first-mention order in the assembled
+   document**, and **panels by their legend's declaration order** — a figure number appears only in
+   the rendered text, but a panel letter appears in the artwork too, and a render can renumber prose
+   but cannot repaint a figure. The reference list is built from the **cited keys**, so an orphaned
+   entry is impossible by construction rather than checked for, and the bibliography is read from its
+   declared path and never contained. At `--section` granularity every token is left **unresolved and
+   visible**, and no placeholder form is invented. See [the citation surface](CITATIONS.md) and
+   [figures and panels](FIGURES.md).
+8. **Parse the legend declaration blocks.** A legend is the first draft artifact with machine-read
+   structure: its `## Panels` block fixes the panel names and, by its entry order, their letters.
 
 ## What it must not do
 
@@ -542,7 +554,12 @@ free-text `@owner` carry everything, and `@owner` is the one that makes the mani
 `;` and nothing else; *the reference list* — what the render builds from the cited keys, which is
 never the bibliography and never all of it. *residue* — unfinished text that is grammatical
 reader-facing prose, so the annotation channel never sees it and no bracket-stripping can find it;
-what [the two lints](#the-two-residue-lints) exist for.
+what [the two lints](#the-two-residue-lints) exist for. *name* — the stable identifier a source
+refers to one of this document's own objects by; *roster* — the manifest of those objects, names
+only; *panel* — a figure that lives inside another figure, referenced by the same token, with
+parentage carried by containment; *declaration block* — a legend's `## Panels` section, whose entry
+order **is** the lettering; *reference literal* — a figure number, a panel letter or a positional
+name typed into prose, which is a parse error. See [figures and panels](FIGURES.md).
 
 ## Tests
 

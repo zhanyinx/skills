@@ -95,9 +95,20 @@ order, and never in the source.
 
 | column | rule |
 |---|---|
-| `kind` | `figure`, `table` or `supplementary` |
-| `name` | the stable name prose refers to: lowercase letters, digits and hyphens |
-| `legend` | the path to the legend file |
+| `kind` | `figure`, `table` or `supplementary`. It fixes which word the reference renders as and which sequence it numbers in — so promoting a figure to supplementary is this one edit, at zero prose edits |
+| `name` | the stable name prose refers to: lowercase letters, digits and hyphens. It describes the object's **content**; a name whose last hyphen-separated segment is a single letter is positional and a parse error |
+| `legend` | the path to the legend file, required and not empty. The **file** may be written later; the row names where its `## Panels` block will be |
+
+**Panels have no rows here, and that is what makes the roster stable under a figure split.** A
+panel's name is declared in its figure's legend, so parentage is carried by containment: a reference
+to a panel resolves through the legend and satisfies its figure's roster row. Splitting one figure
+into two is therefore one roster line and two legends, at zero prose edits — see
+[figures and panels](FIGURES.md).
+
+A roster name **nothing in the document points at** is a hard error, and so is a name in prose that
+is neither a roster name nor a declared panel. The roster is a manifest of *this document's*
+objects, which is the whole difference from the bibliography, where over-provisioning is normal and
+gets no check at all.
 
 ## What the skeleton does not hold
 

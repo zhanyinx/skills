@@ -28,13 +28,13 @@ Name → number resolution happens **inside `render-paper`**, because `--check` 
 external tool present.
 
 A `@fig:name` identifier shares the `@` namespace and is **not** a citation: the bibliography is
-never asked about it, and figures own resolving it. The bracket grammar accepts it, and a token
-carrying nothing else is left verbatim.
+never asked about it, and [figures and panels](FIGURES.md) owns resolving it. The bracket grammar
+accepts it, and the two are told apart by the `fig:` prefix and nothing else.
 
-A **mixed group resolves per key, not per token**: `[@smith2020; @fig:overlay]` renders
-`[1; @fig:overlay]` — the citation takes its number, the figure name stays visible. Leaving the
-whole token alone would drop a real citation out of the reference list while the gate went on
-demanding a bibliography entry for it.
+A **mixed group resolves per key, not per token**: `[@smith2020; @fig:dapi-overlay]` renders
+`[1; fig. 1 (a)]` — each key takes its own rendered form. Leaving the whole token alone would drop a
+real citation out of the reference list while the gate went on demanding a bibliography entry for
+it.
 
 ## Every other bracket in prose is a parse error
 

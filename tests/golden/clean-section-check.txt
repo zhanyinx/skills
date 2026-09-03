@@ -2,7 +2,8 @@
   source grammar                  PASS
   brace grammar                   PASS
   citation group                  PASS
-  slot integrity                  SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  reference literals              PASS
+  slot / roster integrity         SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   citation → bib entry            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   unit / rung pairing             PASS
   originating slot children       PASS
@@ -20,7 +21,7 @@
   sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  11 pass, 0 fail, 8 out of scope, 2 reported
+  12 pass, 0 fail, 8 out of scope, 2 reported
   → NOT a claim that this section is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit

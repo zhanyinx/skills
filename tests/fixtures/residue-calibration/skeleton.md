@@ -17,9 +17,3 @@
 | methods-imaging | 3 | Imaging | procedure |
 | methods-registration | 3 | Registration | procedure |
 | results | 2 | Results and discussion | |
-
-## Roster
-
-| kind | name | legend |
-|---|---|---|
-| figure | registration-accuracy | legends/registration-accuracy.md |

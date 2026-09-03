@@ -102,11 +102,66 @@ REFERENCE = re.compile(r"(?<![\w@])@(%s)" % IDENTIFIER)
 CITATION_GROUP = re.compile(r"\[\s*@%s(?:\s*;\s*@%s)*\s*\]" % (IDENTIFIER, IDENTIFIER))
 BRACKET = re.compile(r"[\[\]]")
 
-# A figure lives in the same namespace behind the same `@`, and `figures and
-# panels` owns resolving it. Here it is only ever *not a citation key*: the
-# bracket grammar accepts it, the bibliography is never asked about it, and the
-# render leaves any token carrying one verbatim.
+# A figure lives in the same namespace behind the same `@`, and is never a
+# citation key: the bracket grammar accepts it, and the bibliography is never
+# asked about it.
 FIGURE_PREFIX = "fig:"
+
+# The rendered forms are pandoc-crossref's own — `fig. 1`, and `fig. 1 (a)` for
+# a panel. `K3`'s winning argument is that an existing tool already resolves
+# name → number, so inventing a second spelling for the same relation is how
+# the two come apart. Which word a name takes is a property of its **roster
+# row**, never of the token: promoting a figure to supplementary is a one-line
+# roster edit at zero prose edits, and that is the property names exist for.
+# The venue's own typography is a downstream concern, as the citation style is.
+FIGURE_LABEL = {"figure": "fig.", "table": "tbl.", "supplementary": "suppl."}
+ROSTER_KINDS = tuple(FIGURE_LABEL)
+
+# The legend's declaration block: one section, one entry per panel, and the
+# entry order is the lettering. The prefix is required on a declaration for the
+# same reason it is required on a reference — one namespace, one token class.
+PANEL_SECTION = "Panels"
+PANEL_DECLARATION = re.compile(r"^@(%s%s)(?:\s|$)" % (FIGURE_PREFIX, IDENTIFIER))
+
+# The three literals the source cannot express, all of them stale identifiers
+# the render would have no way to correct.
+#
+# A parenthesised letter or letter-range is syntactically clean prose, so
+# nothing else refuses it — and it is the artifact a figure split re-letters
+# *first*. On the real split this design was calibrated against, a frozen
+# draft's `Fig 2c–d` **did not dangle; it changed meaning**, which is the one
+# failure no dangling-reference check can catch.
+PANEL_LETTER = re.compile(r"\(\s*[A-Za-z](?:\s*[-–—,;]\s*[A-Za-z])*\s*\)")
+
+# `Fig`+number(+letter). **The figure spellings only, and deliberately not the
+# table or supplementary ones**, even though the roster addresses all three
+# kinds through one namespace: `table` and its relatives are ordinary nouns that
+# take a measurement — *a table 1 mm thick*, *the water table 12 m below* — so a
+# refusal over them fires on prose that references nothing. `fig` and `figure`
+# before a numeral have no such reading.
+#
+# The defect is not lost with them. A stale `Table 1` means the roster name that
+# table carries is referenced nowhere, which is a hard error in both modes; it
+# is reported one row later and less precisely, which is the price of a pattern
+# with no false positives.
+NUMBERED_LITERAL = re.compile(
+    r"\b(?:fig|figs|figure|figures)\b\.?\s*\d+[a-z]?", re.IGNORECASE
+)
+
+# A name whose last hyphen-separated segment is a single letter is a panel
+# letter wearing a name — `@fig:panel-b` — which is the stale identifier a
+# stable name exists to remove, merely spelled inside the namespace. Refused
+# wherever a name is written: in prose, in a legend's declaration block, and in
+# the roster, because one predicate with three call sites cannot disagree with
+# itself about what a name may say.
+#
+# Both cases, because the three call sites do not agree on case: a roster name
+# and a panel declaration are `SLOT_ID`, which is lowercase, but a **reference**
+# is an `IDENTIFIER`, which is not. A lowercase-only pattern would refuse
+# `@fig:panel-b` everywhere and let `@fig:panel-B` through — and let it through
+# silently at `--section`, where the roster row that would otherwise have caught
+# it is out of scope.
+POSITIONAL_NAME = re.compile(r"(?:^|-)[A-Za-z]$")
 
 # The render's own gap token. Its label is author-facing text that already sits
 # in the prose by the time citations resolve, so the scan steps over it rather
@@ -567,15 +622,22 @@ def parse_skeleton(path):
                         "%s: row is not `| kind | name | legend |`" % where
                     )
                 kind, name, legend = cells
-                if kind not in ("figure", "table", "supplementary"):
+                if kind not in ROSTER_KINDS:
                     raise ParseError(
-                        "%s: `%s` is not a roster kind (figure, table, "
-                        "supplementary)" % (where, kind)
+                        "%s: `%s` is not a roster kind (%s)"
+                        % (where, kind, ", ".join(ROSTER_KINDS))
                     )
                 if not SLOT_ID.match(name):
                     raise ParseError(
                         "%s: `%s` is not a name (lowercase, digits, hyphens)"
                         % (where, name)
+                    )
+                _refuse_positional_name(name, where)
+                if not legend:
+                    raise ParseError(
+                        "%s: `%s` has no legend path — a roster row names the "
+                        "file that declares the object's panels, and the file "
+                        "may be written later" % (where, name)
                     )
                 roster.append((kind, name, legend))
 
@@ -673,6 +735,191 @@ def parse_spine(path):
     # rather than about this file's grammar, so it is a printed row in the
     # table and not a parse error: see `check_unit_rung_pairing`.
     return Spine(claim, rungs)
+
+
+# --------------------------------------------------------------------------
+# the figure namespace
+# --------------------------------------------------------------------------
+
+
+class Figures:
+    """This document's objects in **one flat namespace**: every roster name,
+    and every panel its legends declare.
+
+    A panel is not a new kind of object — it is a figure that lives inside
+    another figure — so it is referenced by the same `@fig:name` token and
+    looked up in the same table. **Parentage is carried by containment, never
+    by syntax:** a panel's parent is the roster row whose legend declares it,
+    which is why there is no `@fig:parent:panel` form and no parent column in
+    the roster.
+
+    Numbers are handed out **as `resolve` is called**, and the render calls it
+    while walking the assembled document in skeleton order — so first-mention
+    order is a property of that one walk rather than of a second traversal that
+    could disagree with it. Letters are **not** handed out: a panel's letter is
+    fixed by its position in the legend's declaration block before any prose is
+    read. That asymmetry is the whole design, and it has a physical cause — a
+    figure number appears only in the rendered text, while a panel letter
+    appears in the text **and in the artwork**, and a render can renumber prose
+    but cannot repaint a figure.
+    """
+
+    def __init__(self, roster, panels=()):
+        self.kind = {}
+        self.parent = {}
+        self.letter = {}
+        for kind, name, _ in roster:
+            self.kind[name] = kind
+            self.parent[name] = name
+        for figure, declared in panels:
+            for index, name in enumerate(declared):
+                self.parent[name] = figure
+                self.letter[name] = _letter(index)
+        self._numbers = {}
+        self._sequences = {}
+
+    def figure_for(self, name):
+        """The roster row `name` belongs to — itself for a roster name, its
+        containing figure for a panel, `None` for a name this document does not
+        carry.
+
+        Containment lives here rather than at the call sites, because *which
+        object does this name belong to* is the one question the namespace
+        exists to answer.
+        """
+        return self.parent.get(name)
+
+    def known(self, name):
+        return self.figure_for(name) is not None
+
+    def resolve(self, name):
+        """The rendered form of one reference, or `None` for a name this
+        document does not carry.
+
+        An unknown name is a hard error the gate has already reported by the
+        time anything is emitted, so this leaves the token verbatim rather than
+        holding a second opinion about the tier.
+        """
+        figure = self.figure_for(name)
+        if figure is None:
+            return None
+        kind = self.kind[figure]
+        if figure not in self._numbers:
+            # One sequence per kind: a document numbers its figures and its
+            # tables independently, and every venue expects that.
+            self._sequences[kind] = self._sequences.get(kind, 0) + 1
+            self._numbers[figure] = self._sequences[kind]
+        rendered = "%s %d" % (FIGURE_LABEL[kind], self._numbers[figure])
+        if name == figure:
+            return rendered
+        return "%s (%s)" % (rendered, self.letter[name])
+
+
+def read_figures(root, skeleton):
+    """This document's objects, read once: the roster, and the panels every
+    legend it names declares.
+
+    The namespace is assembled here because this is the only place that holds
+    the roster **and** every legend at once, and a collision is a fact about
+    the pair rather than about either one.
+    """
+    declared = []
+    # Every roster name is claimed before any legend is read, so a collision is
+    # caught whichever of the two the reader meets first: seeding lazily would
+    # let a panel take the name of a figure declared further down the roster.
+    where = dict((name, "the roster") for _, name, _ in skeleton.roster)
+    for _, name, legend in skeleton.roster:
+        panels = parse_legend(root / legend)
+        for panel in panels:
+            if panel in where:
+                raise ParseError(
+                    "%s: `@fig:%s` is declared here and already named in %s — "
+                    "a figure and a panel share one flat namespace, so a name "
+                    "belongs to exactly one object"
+                    % (legend, panel, where[panel])
+                )
+            where[panel] = legend
+        declared.append((name, panels))
+    return Figures(skeleton.roster, declared)
+
+
+def parse_legend(path):
+    """The panel names one legend declares, in **declaration order**.
+
+    A legend is the first draft artifact carrying machine-read structure, and
+    this block is the whole of it: `## Panels`, one entry per panel, in the
+    order the figure lays them out. That order **is** the lettering, because
+    the legend declares the figure's composition — so reordering the block
+    re-letters the artwork, which is why a drafting session may not reorder it
+    and an amendment must escalate.
+
+    The block is authored at **planning** time, by the legend's brief ticket. A
+    panel name minted by the legend's *drafter* arrives too late for every unit
+    that references it: in the corpus this was calibrated on, seven body
+    sections were drafted before all four legends, with roughly 38
+    reader-facing panel references written before any legend existed.
+
+    Absence is a legal state twice over — a legend file not written yet, and a
+    legend with no `## Panels` block, which is a figure or a table with nothing
+    to letter. Both declare no panels. The block is required by the panel
+    *references*, not by the renderer, which is the same reason a missing
+    bibliography is not a parse error either.
+    """
+    if not path.exists():
+        return []
+    where = "%s `## %s`" % (path.name, PANEL_SECTION)
+    names = []
+    for line in _sections(path.read_text()).get(PANEL_SECTION, []):
+        if not line.strip() or line[:1].isspace():
+            # A blank line, or the continuation of the entry above: an entry's
+            # description is free text and wraps over as many lines as it
+            # needs, exactly as the brief's inventory zone does.
+            continue
+        match = PANEL_DECLARATION.match(line)
+        if match is None:
+            raise ParseError(
+                "%s: `%s` is not a panel declaration — an entry opens "
+                "`@fig:<name>` at the start of its line, and this section "
+                "holds declarations and nothing else"
+                % (where, _collapse(line))
+            )
+        name = figure_name(match.group(1))
+        if not SLOT_ID.match(name):
+            raise ParseError(
+                "%s: `%s` is not a name (lowercase, digits, hyphens)"
+                % (where, match.group(1))
+            )
+        _refuse_positional_name(name, where)
+        if name in names:
+            raise ParseError(
+                "%s: `@fig:%s` is declared twice — one entry per panel, and "
+                "its position is the panel's letter" % (where, name)
+            )
+        names.append(name)
+    return names
+
+
+def figure_name(key):
+    """The name behind a `@fig:` identifier.
+
+    The prefix marks the **namespace**, not the kind: what a name renders as
+    comes from its roster row, so the prefix is stripped once here and the
+    namespace is keyed on bare names everywhere else.
+    """
+    return key[len(FIGURE_PREFIX):]
+
+
+def _letter(index):
+    """`a`, `b`, … `z`, `aa` — the spreadsheet sequence, so a legend that
+    declares more panels than the alphabet holds still letters them all rather
+    than running off the end of it."""
+    letters = ""
+    while True:
+        index, remainder = divmod(index, 26)
+        letters = chr(ord("a") + remainder) + letters
+        if index == 0:
+            return letters
+        index -= 1
 
 
 # --------------------------------------------------------------------------
@@ -943,12 +1190,13 @@ class Finding:
         return _where(self.origin, self.line)
 
 
-class Citation:
-    """One `@key` written in reader-facing prose, at the position it was
-    written.
+class Reference:
+    """One `@`-prefixed identifier written in reader-facing prose, at the
+    position it was written — a citation key or a figure name, since the two
+    are one reference surface.
 
-    The source position is what the check reports, and it is the reason
-    citations are collected off the source rather than off the assembled
+    The source position is what the checks report, and it is the reason
+    references are collected off the source rather than off the assembled
     document: by assembly time the blocks have been joined and every line
     number is gone.
     """
@@ -967,10 +1215,11 @@ class Citation:
 class Source:
     """What the source files say, read once.
 
-    Seven things come out of one read and travel together from there to the
+    Eight things come out of one read and travel together from there to the
     gate: the anchored blocks in the order they appear, the prose that landed
-    outside every slot, the annotation manifest, the citations, the advisory
-    warnings, and the two residue lints' findings.
+    outside every slot, the annotation manifest, the citations, the figure and
+    panel references, the advisory warnings, and the two residue lints'
+    findings.
     """
 
     def __init__(self):
@@ -978,6 +1227,7 @@ class Source:
         self.stray = []
         self.annotations = []
         self.citations = []
+        self.figure_references = []
         self.warnings = []
         self.bare_holes = []
         self.workflow_phrases = []
@@ -1042,6 +1292,7 @@ def _read_one_source(source, text, path):
     # blanked to same-length whitespace, so the two channels an author writes
     # in are invisible here and every offset still points at the real source.
     _refuse_bracket_spans(bare, path, fenced)
+    _refuse_reference_literals(bare, path, fenced)
 
     keyed = {}
     current = None
@@ -1057,7 +1308,9 @@ def _read_one_source(source, text, path):
         taken = _chunk(spans, cursor, stop)
         pending.append(_substitute(text, cursor, stop, taken))
         source.annotations.extend(_attach(taken, current, masked, bare, advisories))
-        source.citations.extend(_cited(bare, cursor, stop, current, path, fenced))
+        citations, named = _referenced(bare, cursor, stop, current, path, fenced)
+        source.citations.extend(citations)
+        source.figure_references.extend(named)
         # Both lints read `bare` — the text with every comment and every brace
         # blanked to same-length whitespace — so they see exactly the prose the
         # reader will meet, and still report the source's own line numbers.
@@ -1360,6 +1613,74 @@ def _refuse_bracket_spans(bare, path, fenced):
         )
 
 
+def _refuse_reference_literals(bare, path, fenced):
+    """Outside every comment and every fence, **prose may not spell a figure
+    number, a panel letter, or a name that says where a panel sits.**
+
+    Three shapes, one principle: *the source cannot express a stale
+    identifier.* A number a drafting session types can be wrong-but-valid —
+    pointing at a real figure that is not the one meant — and no gate can catch
+    that, which is why the surface it needs is removed rather than checked.
+
+    It is a **refusal, not a finding**, for the reason every refusal here is
+    one: a finding is what returned CLEAN over 98 em dashes. And it **cannot be
+    configured per effort** — a configurable refusal pattern is the override
+    these rules exist to prevent, wearing a config file. Its cost is therefore
+    stated rather than discovered: a legitimate parenthesised enumerator cannot
+    be written in reader-facing prose. Measured on the calibration corpus,
+    **21 of 21 parenthesised-letter occurrences in reader-facing prose were
+    panel references or declaration markers, and zero were enumerators**, while
+    all **37** legitimate `(a)`/`(b)` enumerator uses sat inside comments, which
+    the refusal exempts by construction.
+    """
+    for pattern, why in (
+        (
+            PANEL_LETTER,
+            "a panel letter belongs to the artwork and to the rendered text, "
+            "never to the source — reference the panel by name",
+        ),
+        (
+            NUMBERED_LITERAL,
+            "a figure or table number exists only in rendered output — "
+            "reference the object by name",
+        ),
+    ):
+        for match in pattern.finditer(bare):
+            if _inside(fenced, match.start()):
+                continue
+            raise ParseError(
+                "%s: `%s` is a reference literal — %s"
+                % (
+                    _where(path, _line_of(bare, match.start())),
+                    _collapse(match.group(0)),
+                    why,
+                )
+            )
+    for match in REFERENCE.finditer(bare):
+        key = match.group(1)
+        if _inside(fenced, match.start()) or not key.startswith(FIGURE_PREFIX):
+            continue
+        _refuse_positional_name(
+            figure_name(key), _where(path, _line_of(bare, match.start()))
+        )
+
+
+def _refuse_positional_name(name, where):
+    """A name says what a panel shows, never where it sits.
+
+    Position is the one thing a name may not carry, because re-ordering panels
+    is a legend edit and a name that encodes position would be silently
+    invalidated by it — which is the defect literal letters have, arriving by a
+    second route.
+    """
+    if POSITIONAL_NAME.search(name):
+        raise ParseError(
+            "%s: `@%s%s` is a positional name — a name describes its content, "
+            "never its position, because the legend's declaration order is "
+            "what assigns the letters" % (where, FIGURE_PREFIX, name)
+        )
+
+
 def _quote_bracket(bare, start):
     """The malformed span, as much of it as there is: to its closing bracket
     when it has one, and to the end of its paragraph when it does not."""
@@ -1369,26 +1690,29 @@ def _quote_bracket(bare, start):
     return _collapse(bare[start : close + 1 if 0 <= close < end else end])
 
 
-def _cited(bare, start, end, block, path, fenced):
-    """Every citation key written in one chunk of prose, in source order.
+def _referenced(bare, start, end, block, path, fenced):
+    """Every reference written in one chunk of prose, in source order, split
+    into the citation keys and the figure names.
 
-    A `@fig:` identifier shares the namespace and is not a citation: the
-    bibliography is never asked about it, and `figures and panels` owns
-    resolving it.
+    **One walk, two lists.** The two classes share a token and are told apart
+    by the `fig:` prefix and nothing else, so scanning twice would be two
+    implementations of one grammar — and the one thing they must agree on is
+    which of them owns a given token.
     """
-    found = []
+    citations = []
+    figures = []
     for match in REFERENCE.finditer(bare, start, end):
-        if _inside(fenced, match.start()) or match.group(1).startswith(FIGURE_PREFIX):
+        if _inside(fenced, match.start()):
             continue
-        found.append(
-            Citation(
-                match.group(1),
-                path,
-                _line_of(bare, match.start()),
-                None if block is None else block.slot_id,
-            )
+        key = match.group(1)
+        reference = Reference(
+            key,
+            path,
+            _line_of(bare, match.start()),
+            None if block is None else block.slot_id,
         )
-    return found
+        (figures if key.startswith(FIGURE_PREFIX) else citations).append(reference)
+    return citations, figures
 
 
 def _without_braces(masked, spans):
@@ -1729,6 +2053,43 @@ def slot_integrity_problems(skeleton, anchored, stray):
             )
         else:
             seen[block.slot_id] = block
+    return problems
+
+
+def roster_integrity_problems(skeleton, figures, referenced):
+    """The two ways a document's references and its roster misdescribe each
+    other: a name in prose the document does not carry, and a roster name the
+    prose never points at.
+
+    **The check is symmetric, and the symmetry is what separates it from the
+    bibliography's.** A roster is a manifest of *this document's* objects, so
+    an object nothing points at is damage — a figure that would be published
+    and never discussed. A library is over-provisioned by nature, which is why
+    the citation check has no second half and must not grow one.
+
+    Parentage is carried by containment on **both** sides. A reference to a
+    panel resolves because its legend declares it, and it satisfies its
+    figure's roster row, because a reference to a panel *is* a reference to the
+    figure the panel lives in. A declared panel the prose never names is no
+    problem at all: the roster carries no panel rows, so there is no roster
+    name left unreferenced, and a figure may legitimately hold a panel the
+    prose does not call out on its own.
+    """
+    problems = []
+    dangling = set()
+    pointed_at = set()
+    # One walk answers both halves: a reference either names nothing, or it
+    # names the object it points at through containment.
+    for reference in referenced:
+        figure = figures.figure_for(figure_name(reference.key))
+        if figure is not None:
+            pointed_at.add(figure)
+        elif reference.key not in dangling:
+            dangling.add(reference.key)
+            problems.append("%s `@%s`" % (reference.where, reference.key))
+    for _, name, _ in skeleton.roster:
+        if name not in pointed_at:
+            problems.append("`%s` is in the roster and referenced nowhere" % name)
     return problems
 
 
@@ -2464,15 +2825,28 @@ class Number(Verdict):
         return self.text
 
 
-def check_slot_integrity(paper):
+def check_slot_roster_integrity(paper):
     """An anchor names a slot the skeleton carries, no slot is anchored twice,
-    and no prose sits outside every slot.
+    no prose sits outside every slot, every figure or panel name in prose is a
+    name this document carries, and every roster name is pointed at.
 
-    A broken tree is damage, and circulating damage is how it spreads, so this
-    is a hard error rather than a gate. Whole-document only: whether a slot is
-    anchored twice, or anchored nowhere, is a fact about the whole document.
+    **One row, because it is one defect:** the emitted document is not the
+    document the source describes. A broken tree and a reference to an object
+    the document does not have are the same failure wearing two shapes, and
+    circulating damage is how it spreads — so this is a hard error rather than
+    a gate.
+
+    Whole-document only. Whether a slot is anchored twice, or anchored nowhere,
+    is a fact about the whole document; so is *a roster name never referenced*,
+    which is undecidable from one unit's source because the reference may live
+    in any other unit.
     """
-    return Verdict.over(slot_integrity_problems(paper.skeleton, paper.blocks, paper.stray))
+    return Verdict.over(
+        slot_integrity_problems(paper.skeleton, paper.blocks, paper.stray)
+        + roster_integrity_problems(
+            paper.skeleton, paper.figures, paper.figure_references
+        )
+    )
 
 
 def check_citation_entries(paper):
@@ -3036,10 +3410,10 @@ def report_locality(paper):
 #   parse    source grammar              (built)
 #   parse    brace grammar               (built)
 #   parse    citation group              (built)
-#   parse    reference literals          figures and panels
-#   hard     slot integrity              (built; becomes slot / roster
-#                                        integrity when figures land the
-#                                        roster half of it)
+#   parse    reference literals          (built)
+#   hard     slot / roster integrity     (built; the roster half joined the
+#                                        slot half when figures landed, and
+#                                        the row took its full name)
 #   hard     citation → bib entry        (built)
 #   hard     unit / rung pairing         (built)
 #   hard     originating slot children   (built)
@@ -3065,7 +3439,7 @@ def report_locality(paper):
 # A row name may be a function of the paper, for a row whose name carries the
 # threshold the number was measured against.
 REGISTRY = [
-    ("slot integrity", HARD, DOCUMENT, check_slot_integrity),
+    ("slot / roster integrity", HARD, DOCUMENT, check_slot_roster_integrity),
     ("citation → bib entry", HARD, DOCUMENT, check_citation_entries),
     ("unit / rung pairing", HARD, None, check_unit_rung_pairing),
     ("originating slot children", HARD, None, check_originating_slot_children),
@@ -3115,6 +3489,7 @@ PARSE_ROWS = [
     "source grammar",
     "brace grammar",
     "citation group",
+    "reference literals",
 ]
 
 
@@ -3128,17 +3503,19 @@ class Paper:
     in scope."""
 
     def __init__(
-        self, skeleton, spine, briefs, bibliography, source, granularity, unit,
-        em_dash_threshold,
+        self, skeleton, spine, briefs, bibliography, figures, source, granularity,
+        unit, em_dash_threshold,
     ):
         self.skeleton = skeleton
         self.spine = spine
         self.briefs = briefs
         self.bibliography = bibliography
+        self.figures = figures
         self.blocks = source.blocks
         self.stray = source.stray
         self.annotations = source.annotations
         self.citations = source.citations
+        self.figure_references = source.figure_references
         self.warnings = source.warnings
         self.bare_holes = source.bare_holes
         self.workflow_phrases = source.workflow_phrases
@@ -3215,32 +3592,38 @@ def render_document(paper):
             prose = _hole("prose for %s" % slot.id)
         if prose:
             if paper.granularity == DOCUMENT:
-                prose = _resolve_citations(prose, numbers)
+                prose = _resolve_references(prose, numbers, paper.figures)
             out.append("\n%s\n" % prose)
     out.append(_reference_list(paper, numbers))
     return "".join(out)
 
 
-def _resolve_citations(prose, numbers):
-    """Every citation token in one slot's prose, replaced by its number.
+def _resolve_references(prose, numbers, figures):
+    """Every reference token in one slot's prose, replaced by what it resolves
+    to — a citation by its number, a figure or panel by its rendered form.
 
-    Numbers are assigned **by first mention in the assembled document**, which
-    is why `numbers` is carried across the slots in render order rather than
-    rebuilt per slot. A drafting session writes a key and never a number, so a
+    **One walk for both classes**, because `@`-prefixed identifiers are one
+    reference surface and a single token may carry either. Numbers are assigned
+    **by first mention in the assembled document**, which is why `numbers` and
+    `figures` are both carried across the slots in render order rather than
+    rebuilt per slot. A drafting session writes a name and never a number, so a
     number it might have written wrong — wrong-but-valid, and invisible to
     every check — is a thing it cannot type.
 
-    Three things are stepped over. A gap token's label is author-facing text
-    the render has already substituted into the prose, so a key inside one is
-    not a citation of this document. Inside a fence nothing is parsed at all,
+    Two things are stepped over. A gap token's label is author-facing text the
+    render has already substituted into the prose, so a name inside one is not
+    a reference of this document. And inside a fence nothing is parsed at all,
     here as everywhere else — a source showing the syntax is showing it, not
-    using it. And a `@fig:` identifier belongs to the figure namespace, which
-    resolves elsewhere.
+    using it.
 
-    A mixed group resolves **per key, not per token**: the citations take their
-    numbers and the figure names stay visible. Leaving the whole token verbatim
-    would drop a real citation out of the reference list while the gate went on
-    demanding an entry for it.
+    A group resolves **per key, not per token**, so a mixed
+    `[@smith2020; @fig:overlay]` renders `[1; fig. 2]`. Leaving the whole token
+    verbatim would drop a real citation out of the reference list while the
+    gate went on demanding an entry for it.
+
+    **The brackets are the source's own grouping, so they survive**: a group
+    renders as a group and a bare token renders bare, which is the one thing
+    that keeps `@fig:overlay` from acquiring citation brackets it never had.
     """
     fenced = _fenced_spans(prose)
 
@@ -3248,18 +3631,29 @@ def _resolve_citations(prose, numbers):
         token = match.group(0)
         if match.group("gap") or _inside(fenced, match.start()):
             return token
-        keys = REFERENCE.findall(token)
-        cited = [key for key in keys if not key.startswith(FIGURE_PREFIX)]
-        if not cited:
-            return token
-        for key in cited:
-            numbers.setdefault(key, len(numbers) + 1)
-        if len(cited) == len(keys):
-            return "[%s]" % ",".join(str(numbers[key]) for key in keys)
-        return "[%s]" % "; ".join(
-            "@%s" % key if key.startswith(FIGURE_PREFIX) else str(numbers[key])
-            for key in keys
-        )
+        # The prefix decides the class **once**. Reading it back out of the
+        # rendered form — *is this piece all digits?* — would couple the bracket
+        # style to `FIGURE_LABEL` never holding a digit, which is a promise
+        # nothing here makes.
+        pieces = []
+        every_piece_a_citation = True
+        for key in REFERENCE.findall(token):
+            if key.startswith(FIGURE_PREFIX):
+                every_piece_a_citation = False
+                pieces.append(figures.resolve(figure_name(key)) or "@%s" % key)
+            else:
+                pieces.append(str(numbers.setdefault(key, len(numbers) + 1)))
+        if match.group("bare"):
+            # A narrative citation still takes the numeric style's brackets —
+            # `@muhlberg2020` and `[@muhlberg2020]` both render `[4]`, because
+            # in a numbered style the two positions do not differ. A figure
+            # takes none: `fig. 1` is already the whole rendered form.
+            if every_piece_a_citation:
+                return "[%s]" % pieces[0]
+            return pieces[0]
+        if every_piece_a_citation:
+            return "[%s]" % ",".join(pieces)
+        return "[%s]" % "; ".join(pieces)
 
     return CITATION_TOKEN.sub(resolve, prose)
 
@@ -3516,6 +3910,7 @@ def main(argv=None):
         skeleton = parse_skeleton(root / "skeleton.md")
         spine = parse_spine(root / "spine.md")
         bibliography = read_bibliography(root / BIB_PATH)
+        figures = read_figures(root, skeleton)
         source = parse_source(paths)
         briefs = load_briefs(root, skeleton)
         unit = None
@@ -3529,7 +3924,7 @@ def main(argv=None):
         return EXIT_HARD
 
     paper = Paper(
-        skeleton, spine, briefs, bibliography, source, granularity, unit,
+        skeleton, spine, briefs, bibliography, figures, source, granularity, unit,
         args.em_dash_threshold,
     )
     mode = SUBMIT if args.submit else CHECK if args.check else CIRCULATE

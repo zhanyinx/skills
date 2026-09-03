@@ -17,4 +17,12 @@
 | methods-imaging | 3 | Imaging | procedure |
 | methods-registration | 3 | Registration | procedure |
 | results | 2 | Results and discussion | |
-| back-matter | 2 | Data availability | |
+
+## Roster
+
+| kind | name | legend |
+|---|---|---|
+| figure | study-design | legends/study-design.md |
+| figure | pipeline-and-registration | legends/pipeline-and-registration.md |
+| figure | outcome-by-arm | legends/outcome-by-arm.md |
+| figure | survival | legends/survival.md |
