@@ -28,13 +28,22 @@ Name → number resolution happens **inside `render-paper`**, because `--check` 
 external tool present.
 
 A `@fig:name` identifier shares the `@` namespace and is **not** a citation: the bibliography is
-never asked about it, and [figures and panels](SKILL.md) own resolving it. The bracket grammar
-accepts it, and the render leaves any token carrying one verbatim.
+never asked about it, and figures own resolving it. The bracket grammar accepts it, and a token
+carrying nothing else is left verbatim.
 
-## Every other bracket span is a parse error
+A **mixed group resolves per key, not per token**: `[@smith2020; @fig:overlay]` renders
+`[1; @fig:overlay]` — the citation takes its number, the figure name stays visible. Leaving the
+whole token alone would drop a real citation out of the reference list while the gate went on
+demanding a bibliography entry for it.
 
-Outside comments and fences, a `[…]` span in prose **must** be a citation group. Anything else is a
-parse error: exit `3`, nothing ran, no table.
+## Every other bracket in prose is a parse error
+
+Outside comments and fences, **every bracket character in prose must belong to a citation group.**
+Anything else is a parse error: exit `3`, nothing ran, no table.
+
+The rule is stated over the characters rather than over `[…]` spans, because a span rule leaks
+twice: the outer pair of `[[@smith2020]]` is part of no span, and an unclosed `[` never forms one at
+all. Both reach the reader as free text, which is the thing being refused.
 
 The permissive form — *a `[…]` span is legal iff it contains an `@key`* — was rejected for a
 specific reason. Pandoc's bracket prefix is free text, so that rule admits `[verify this

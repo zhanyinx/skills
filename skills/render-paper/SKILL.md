@@ -96,10 +96,13 @@ The tier answers one question: **would the render emit something false?**
   carrying the gate bit, an unfilled skeleton slot, an unfilled document title, a debt the ladder
   never closes, a debt closed before it is opened.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
-  source, an unclosed comment, a malformed or unclosed brace, a `[…]` span in prose that is not a
-  citation group, a malformed `skeleton.md`, `spine.md` or `references.bib`, a declared input that
-  is missing. **Only a brace or a bracket can refuse, never a comment** — a parse error is for what
+  source, an unclosed comment, a malformed or unclosed brace, a bracket in prose outside a citation
+  group, a malformed `skeleton.md`, `spine.md` or `references.bib`, a missing `skeleton.md` or
+  `spine.md`. **Only a brace or a bracket can refuse, never a comment** — a parse error is for what
   the source cannot express into *reader-facing* prose, and a comment never reaches the reader.
+  A **missing `references.bib` is not** a parse error: the library is required by the citations
+  rather than by the renderer, so it is the hard error above, and a paper citing nothing needs no
+  library at all.
 - **Reported** iff the fact is worth an author's attention and no exit code: the em-dash count, the
   prose diagnostics, and the locality test. **A reported row never changes the exit code**, in any
   mode — see below.
@@ -230,12 +233,11 @@ then prints `0 in 0 originating units`, which says why the number is zero.
 
 Scope is **defined, not assumed**, or the count fires on text no author wrote as prose. In scope: the
 body prose of every anchored slot at this granularity. Out of scope: HTML comments, annotation
-braces, citation groups (a `[…]` span carrying a citation key), pipe-table rows, and fenced code
-blocks. A bracket span with no key is **prose**: this design reserves `[…]` for citation groups, but
-until that rule is enforced by parse, blanking such a span would shorten the sentence every number
-is measured over. Headings never arrive at
-all — the skeleton owns them and the render injects them. Every excluded span is **blanked rather
-than deleted**, so a reported line number is the author's own line number.
+braces, citation groups, pipe-table rows, and fenced code blocks. There is no third case for a
+bracket span with no key — **every bracket character in prose belongs to a citation group, enforced
+by parse**, so a span with no key never reaches a diagnostic. Headings never arrive at all — the
+skeleton owns them and the render injects them. Every excluded span is **blanked rather than
+deleted**, so a reported line number is the author's own line number.
 
 A sentence ends at `.`, `!` or `?` followed by whitespace, unless what precedes it is an abbreviation
 or an initial. A word is a whitespace-delimited token with a letter or a digit in it, so a standalone
