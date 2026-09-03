@@ -34,7 +34,7 @@ nothing has nothing to resolve.
 
 [The annotation channel](ANNOTATION-CHANNEL.md) — `{{ … }}` **must** appear in the render, an HTML
 comment **must never** — plus the manifest, the gate bit, and the creation-rights grid. Same reason
-the two file formats are documented here: `render-paper` is the channel's only parser.
+the file formats are documented here: `render-paper` is the channel's only parser.
 
 ```
 {{ [!] [SLOT:] [@owner] <label> }}      ! is the gate bit; bare is a HOLE; SLOT: is a venue field
@@ -340,7 +340,10 @@ different concepts, one word; every passage where both could apply qualifies whi
 inventories. *HOLE* / *SLOT* / *SILENT* — what the reader sees, and the only render-behaviour
 vocabulary there is; *the gate bit* — whether an annotation blocks `--submit`, independent of what
 the reader sees. **There is no kind enum**: the two axes plus the free-text `@owner` carry
-everything, and `@owner` is the one that makes the manifest sendable.
+everything, and `@owner` is the one that makes the manifest sendable. *key* — the stable name a
+source cites a source by; *citation group* — a `[…]` span holding keys and `;` and nothing else;
+*the reference list* — what the render builds from the cited keys, which is never the bibliography
+and never all of it.
 
 ## Tests
 
