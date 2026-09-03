@@ -4,6 +4,9 @@
   unit / rung pairing       PASS
   originating slot children PASS
   unfilled skeleton slot    PASS
+  chain bookkeeping         PASS
+  debt precedence           PASS
+  locality test             4 units, 2 cross-unit edges (abstract restates results; `D1` introduction→results)
 
-  6 pass, 0 fail, 0 out of scope
+  8 pass, 0 fail, 0 out of scope, 1 reported
   → NOT a claim that this document is finished

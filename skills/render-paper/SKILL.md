@@ -60,10 +60,12 @@ The tier answers one question: **would the render emit something false?**
   anchor naming a slot the skeleton does not carry, one slot anchored twice, prose sitting outside
   every slot, a unit and its rung not pairing 1:1, an originating unit bearing children.
 - **Submit-gating** iff the render is faithful but the work is unfinished: an unfilled skeleton slot,
-  or an unfilled document title.
+  an unfilled document title, a debt the ladder never closes, a debt closed before it is opened.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
   source, an unclosed comment, a malformed `skeleton.md` or `spine.md`, a declared input that is
   missing.
+- **Reported, and never any of the three**: a measured fact about the argument or the prose. It
+  prints a number, and the exit code does not move.
 
 ### A parse error is not a gate
 
@@ -90,8 +92,11 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   unit / rung pairing       PASS
   originating slot children PASS
   unfilled skeleton slot    FAIL — 1 (`methods-imaging`)
+  chain bookkeeping         SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  debt precedence           SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  locality test             SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  4 pass, 1 fail, 1 out of scope
+  4 pass, 1 fail, 4 out of scope, 0 reported
   → NOT a claim that this section is finished
 ```
 
@@ -100,8 +105,14 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   that never looked is a **printed row**, never silently a pass. One word cannot carry the difference
   between checked-and-fine and never-checked, which is why no single-word verdict is emitted anywhere.
 - A `FAIL` carries its count and what failed.
+- **A reported row carries numbers instead of a verdict**, and it never moves the exit code — the
+  `locality test` row prints `4 units, 2 cross-unit edges (…)` where a gate row prints `PASS`. A
+  measured fact is what the author reads and what the review reads; what to do about it is judgement
+  the render does not hold. Where a reported row is whole-document only, it prints `SKIPPED` like any
+  other out-of-scope row.
 - The table closes with the counts and the line saying it is **not** a claim that the section (or the
   document) is finished. A gate with no FAILs is a statement about mechanism, never about judgement.
+  Every row is counted once, under what it printed, so the four counts sum to the rows.
 - **A row is never printed without a check behind it.** The registry grows as the checks are built;
   a row with nothing behind it would read as a pass, which is the defect this table exists to kill.
 

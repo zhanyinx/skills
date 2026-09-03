@@ -157,3 +157,15 @@ slot inside the amending session's own subtree.
 **Escalated to a `task` ticket that blocks the draft ticket:** reordering slots, changing an existing
 slot's level, removing a slot, renaming a slot that other prose points at, a figure split another
 unit references, reordering a legend's declaration block.
+
+Because it is mechanical it is a check, and it prints as the **reported** `locality test` row:
+
+```
+  locality test             4 units, 2 cross-unit edges (abstract restates results; `D1` introduction→results)
+```
+
+What the two files fix before any amendment is proposed is the **coupling**: a unit's own subtree is
+its to amend, the tree's order and levels are nobody's alone, and every edge leaving a unit — a debt
+it opens that another unit closes, a rung it restates — ties it to a unit it may not amend. So the
+row names the edges, and **reports rather than gates**: a coupled argument is what a ladder *is*, not
+a defect in one.

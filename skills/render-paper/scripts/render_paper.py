@@ -35,6 +35,12 @@ EXIT_PARSE = 3
 HARD = "hard"
 GATING = "gating"
 
+# The fourth tier is not a verdict at all: a reported row carries numbers, and
+# it never moves the exit code. A measured number about the argument or the
+# prose is a finding the author reads, never a refusal — a threshold on it
+# would be satisfied by working the number rather than the writing.
+REPORTED = "reported"
+
 # The three verdicts, and nothing else. No single-word verdict is emitted
 # anywhere: one word cannot carry checked-and-fine against never-looked.
 PASS = "PASS"
@@ -648,11 +654,13 @@ def find_paper_root(source, override):
 
 
 class Verdict:
-    """One row's outcome: which of the three verdicts, and what failed."""
+    """One row's outcome: which of the three verdicts, and what failed — or,
+    on a reported row, the measurement it carries instead of a verdict."""
 
-    def __init__(self, kind, problems=()):
+    def __init__(self, kind, problems=(), measurement=None):
         self.kind = kind
         self.problems = list(problems)
+        self.measurement = measurement
 
     @classmethod
     def over(cls, problems):
@@ -662,7 +670,16 @@ class Verdict:
     def skipped(cls):
         return cls(SKIPPED)
 
+    @classmethod
+    def reported(cls, measurement):
+        """A number, never a verdict. A reported row cannot fail, so it cannot
+        reach the exit code — the row is what the author reads, and what to do
+        about it is judgement the render does not hold."""
+        return cls(REPORTED, measurement=measurement)
+
     def render(self):
+        if self.kind == REPORTED:
+            return self.measurement
         if self.kind != FAIL:
             return self.kind
         return "%s — %d (%s)" % (FAIL, len(self.problems), "; ".join(self.problems))
@@ -762,6 +779,172 @@ def _owes_prose(paper, slot):
     return not slot.children and not paper.prose_for(slot)
 
 
+# --------------------------------------------------------------------------
+# the chain walk
+#
+# A graph query over declared metadata, never a reading of the prose. It reads
+# the **declared relation** and never the section type: a Methods unit may
+# carry the paper's load-bearing claim, and a walk that expected an
+# introduction to open every debt would false-fail on exactly that paper.
+#
+# Debts are opened and closed by **units**. A rung keys to one unit, so there
+# is no debt edge inside a unit and nothing to check inside one; a rung naming
+# a child slot is the `unit / rung pairing` row's finding, not this walk's.
+#
+# This is the mechanical half only. Whether prose that *claims* to close a debt
+# actually closes it is judgement, and belongs to the review.
+# --------------------------------------------------------------------------
+
+
+def check_chain_bookkeeping(paper):
+    """Every declared debt opened exactly once, closed exactly once, and none
+    dangling at the end.
+
+    Submit-gating: the render is faithful — the document says what the source
+    says — and it is the argument that is unfinished. A debt is identified by
+    its id and never by its text, so the walk joins on the id the ladder
+    declares, and two innocent spellings of one debt cannot orphan an edge.
+    """
+    problems = []
+    rungs = paper.spine.rungs
+    known = set(rung.id for rung in rungs)
+    opened = {}
+    closed = {}
+
+    for rung in rungs:
+        for debt, declared_closer, _statement in rung.opens:
+            opened.setdefault(debt, []).append((rung.id, declared_closer))
+        for debt in rung.closes:
+            closed.setdefault(debt, []).append(rung.id)
+        for restated in rung.restates:
+            if restated not in known:
+                problems.append(
+                    "%s restates %s, which is not a rung in this ladder"
+                    % (rung.id, restated)
+                )
+
+    for debt in sorted(opened, key=_id_number):
+        openers = opened[debt]
+        closers = closed.get(debt, [])
+        if len(openers) > 1:
+            problems.append(
+                "`%s` is opened %s, by %s"
+                % (debt, _repeatedly(len(openers)), _and(o for o, _ in openers))
+            )
+        if not closers:
+            problems.append(
+                "`%s` is opened by %s and never closed" % (debt, openers[0][0])
+            )
+        elif len(closers) > 1:
+            problems.append(
+                "`%s` is closed %s, by %s"
+                % (debt, _repeatedly(len(closers)), _and(closers))
+            )
+        for _opener, declared_closer in openers:
+            if declared_closer not in known:
+                problems.append(
+                    "`%s` declares %s closes it, which is not a rung in this ladder"
+                    % (debt, declared_closer)
+                )
+            elif len(closers) == 1 and closers[0] != declared_closer:
+                problems.append(
+                    "`%s` declares %s closes it, but %s does"
+                    % (debt, declared_closer, closers[0])
+                )
+
+    for debt in sorted(closed, key=_id_number):
+        if debt not in opened:
+            for rung_id in closed[debt]:
+                problems.append("%s closes `%s`, which no rung opens" % (rung_id, debt))
+
+    return Verdict.over(problems)
+
+
+def check_debt_precedence(paper):
+    """Every debt is opened in a unit no later than the unit that closes it,
+    read against the **skeleton's** order.
+
+    The skeleton's order is the document's reading order, and the reader is who
+    the rule protects: close a debt before the unit that opens it, and the
+    payoff arrives before the promise. Reading order and argument order are
+    different relations and may disagree, so the ladder's own order is not what
+    this reads.
+    """
+    order = dict(
+        (unit.id, index) for index, unit in enumerate(paper.skeleton.units)
+    )
+    closers = {}
+    for rung in paper.spine.rungs:
+        for debt in rung.closes:
+            closers.setdefault(debt, []).append(rung)
+
+    problems = []
+    for rung in paper.spine.rungs:
+        for debt, _declared_closer, _statement in rung.opens:
+            closing = closers.get(debt, [])
+            if len(closing) != 1:
+                continue  # a debt closed by nobody or by two is bookkeeping's
+            opened_in, closed_in = rung.unit, closing[0].unit
+            if opened_in not in order or closed_in not in order:
+                continue  # a rung naming no unit is the pairing row's
+            if order[opened_in] > order[closed_in]:
+                problems.append(
+                    "`%s` is opened in `%s` and closed in `%s`, which the skeleton "
+                    "reads first" % (debt, opened_in, closed_in)
+                )
+    return Verdict.over(problems)
+
+
+def report_locality(paper):
+    """The `K8` locality test: what a drafting session may amend on its own.
+
+    An amendment touching only the amending session's own slot is immediate;
+    one touching another slot, or the order or levels of the tree, files a
+    `task` ticket that blocks the draft ticket. That is decidable from the two
+    files together, which is what makes it a check rather than a habit.
+
+    Before any amendment is proposed, what the two files fix is the coupling: a
+    unit's own subtree is its to amend, the tree's order and levels are nobody's
+    alone, and every edge leaving a unit ties it to another one. So the row
+    reports the edges — and reports rather than gates, because a coupled
+    argument is what a ladder *is*, not a defect in one.
+    """
+    edges = []
+    for rung in paper.spine.rungs:
+        for debt, _declared_closer, _statement in rung.opens:
+            for other in paper.spine.rungs:
+                if debt in other.closes and other.unit != rung.unit:
+                    edges.append("`%s` %s→%s" % (debt, rung.unit, other.unit))
+        for restated in rung.restates:
+            for other in paper.spine.rungs:
+                if other.id == restated and other.unit != rung.unit:
+                    edges.append("%s restates %s" % (rung.unit, other.unit))
+
+    units = len(paper.skeleton.units)
+    if not edges:
+        return Verdict.reported("%d units, no cross-unit edge" % units)
+    return Verdict.reported(
+        "%d units, %d cross-unit edge%s (%s)"
+        % (units, len(edges), "" if len(edges) == 1 else "s", "; ".join(edges))
+    )
+
+
+def _id_number(identifier):
+    """`D10` sorts after `D2`, so a report's order is the ladder's own."""
+    return int(identifier[1:])
+
+
+def _repeatedly(count):
+    return "twice" if count == 2 else "%d times" % count
+
+
+def _and(items):
+    items = list(items)
+    if len(items) == 1:
+        return items[0]
+    return "%s and %s" % (", ".join(items[:-1]), items[-1])
+
+
 # Row order is this registry's order, and it is fixed: `review-paper` reports
 # the table verbatim, so the order is an interface. Rows arrive as the checks
 # behind them are built; a row is never printed without a check behind it,
@@ -784,8 +967,10 @@ def _owes_prose(paper, slot):
 #   gating   unfilled skeleton slot      (built)
 #   gating   bare holes                  residue lints
 #   gating   workflow phrases            residue lints
-#   gating   chain bookkeeping           chain walk
-#   reported (the diagnostics, the overlap instrument, the locality test)
+#   gating   chain bookkeeping           (built)
+#   gating   debt precedence             (built)
+#   reported locality test               (built)
+#   reported (the em-dash count, the overlap instrument, the diagnostics)
 #
 # The two parse-tier rows built here have no entry below: a parse error means
 # nothing ran, so the table is absent rather than carrying their verdicts.
@@ -794,6 +979,9 @@ REGISTRY = [
     ("unit / rung pairing", HARD, None, check_unit_rung_pairing),
     ("originating slot children", HARD, None, check_originating_slot_children),
     ("unfilled skeleton slot", GATING, None, check_unfilled_skeleton_slot),
+    ("chain bookkeeping", GATING, DOCUMENT, check_chain_bookkeeping),
+    ("debt precedence", GATING, DOCUMENT, check_debt_precedence),
+    ("locality test", REPORTED, DOCUMENT, report_locality),
 ]
 
 # The parse-tier rows print `PASS` whenever a table prints at all, because a
@@ -892,14 +1080,17 @@ def _hole(label):
 def format_report(rows, granularity):
     """The table `review-paper` reports verbatim, so its shape is an interface."""
     lines = []
-    counts = {PASS: 0, FAIL: 0, SKIPPED: 0}
+    counts = {PASS: 0, FAIL: 0, SKIPPED: 0, REPORTED: 0}
     for name, verdict in rows:
         lines.append("%s%s %s" % (INDENT, name.ljust(NAME_WIDTH - 1), verdict.render()))
         counts[verdict.kind] += 1
     lines.append("")
+    # Every row is counted once, under what it printed: a reported row that was
+    # out of scope printed `SKIPPED` and is counted there, because a row nobody
+    # looked at is never counted as a row that reported something.
     lines.append(
-        "%s%d pass, %d fail, %d out of scope"
-        % (INDENT, counts[PASS], counts[FAIL], counts[SKIPPED])
+        "%s%d pass, %d fail, %d out of scope, %d reported"
+        % (INDENT, counts[PASS], counts[FAIL], counts[SKIPPED], counts[REPORTED])
     )
     lines.append(
         "%s→ NOT a claim that this %s is finished"
@@ -909,9 +1100,13 @@ def format_report(rows, granularity):
 
 
 def run_gate(paper):
-    """Every row in registry order, and the failed rows by tier."""
+    """Every row in registry order, and the failed rows by tier.
+
+    A reported row carries no verdict, so it reaches neither list and cannot
+    move the exit code.
+    """
     rows = [(name, Verdict(PASS)) for name in PARSE_ROWS]
-    failed = {HARD: [], GATING: []}
+    failed = {HARD: [], GATING: [], REPORTED: []}
     for name, tier, scope, check in REGISTRY:
         verdict = (
             Verdict.skipped()

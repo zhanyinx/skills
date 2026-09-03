@@ -4,6 +4,9 @@
   unit / rung pairing       PASS
   originating slot children PASS
   unfilled skeleton slot    PASS
+  chain bookkeeping         SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  debt precedence           SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  locality test             SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  5 pass, 0 fail, 1 out of scope
+  5 pass, 0 fail, 4 out of scope, 0 reported
   → NOT a claim that this section is finished

@@ -8,6 +8,15 @@ PASS = "PASS"
 SKIPPED = "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
 
 
+def verdict_for(report, name):
+    """What one row of the table printed, read out of the table by row name."""
+    for line in report.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(name + " "):
+            return stripped[len(name) :].strip()
+    raise AssertionError("no `%s` row in this table:\n%s" % (name, report))
+
+
 class TestCheckMode:
     def test_clean_paper_passes_every_check_and_exits_zero(self, render, golden):
         result = render("clean", "MANUSCRIPT.working.md", "--check")
@@ -562,3 +571,265 @@ class TestNoProseIsEverDroppedSilently:
         assert result.exit_code == 0
         assert "The paper measures one thing." in result.document
         assert "A second block claiming the same slot." in result.document
+
+
+class TestChainBookkeeping:
+    """The chain walk is a graph query over declared metadata: every declared
+    debt opened exactly once, closed exactly once, none dangling at the end.
+
+    Submit-gating, because the render is faithful — the document says what the
+    source says — and it is the argument that is unfinished.
+    """
+
+    def test_a_debt_nobody_closes_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("- closes: D1\n", ""))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert verdict_for(result.report, "chain bookkeeping").startswith("FAIL")
+        assert "`D1` is opened by R2 and never closed" in result.report
+
+    def test_a_debt_opened_twice_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text().replace(
+                "- restates: R4",
+                "- opens: D1 (closed by R4) — whether the registration is accurate",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "`D1` is opened twice, by R1 and R2" in result.report
+
+    def test_a_debt_closed_twice_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text().replace(
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration",
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration\n- closes: D1",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "`D1` is closed twice, by R3 and R4" in result.report
+
+    def test_closing_a_debt_no_rung_opens_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("- closes: D1", "- closes: D9"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "R4 closes `D9`, which no rung opens" in result.report
+
+    def test_the_declared_closer_must_be_the_rung_that_closes(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text()
+            .replace("- closes: D1\n", "")
+            .replace(
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration",
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration\n- closes: D1",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "`D1` declares R4 closes it, but R3 does" in result.report
+
+    def test_a_declared_closer_that_is_not_a_rung_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("(closed by R4)", "(closed by R9)"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert (
+            "`D1` declares R9 closes it, which is not a rung in this ladder"
+            in result.report
+        )
+
+    def test_a_restated_rung_that_does_not_exist_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("- restates: R4", "- restates: R9"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "R1 restates R9, which is not a rung in this ladder" in result.report
+
+    def test_an_unclosed_debt_still_circulates_and_refuses_submission(
+        self, paper, run_in
+    ):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("- closes: D1\n", ""))
+
+        circulated = run_in(where, "MANUSCRIPT.working.md", "--circulate")
+        submitted = run_in(where, "MANUSCRIPT.working.md", "--submit")
+
+        assert circulated.exit_code == 1
+        assert "## Results and discussion" in circulated.document
+        assert submitted.exit_code == 1
+        assert submitted.document == ""
+        assert (
+            "chain bookkeeping: `D1` is opened by R2 and never closed"
+            in submitted.report
+        )
+
+
+class TestDebtPrecedence:
+    """`K4`: every debt is opened in a unit no later than the unit that closes
+    it, or the reader meets the payoff before the promise."""
+
+    def test_a_debt_closed_before_it_is_opened_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text()
+            .replace("- restates: R4", "- restates: R4\n- closes: D2")
+            .replace(
+                "- closes: D1",
+                "- closes: D1\n- opens: D2 (closed by R1) — whether the drift is bounded",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert (
+            "`D2` is opened in `results` and closed in `abstract`, which the "
+            "skeleton reads first" in result.report
+        )
+        assert verdict_for(result.report, "chain bookkeeping") == PASS
+
+    def test_precedence_is_the_skeletons_order_and_not_the_ladders(self, paper, run_in):
+        # The abstract is the ladder's *last* rung and the document's *first*
+        # unit. A debt it opens and a later unit closes respects the reading
+        # order, and reading order is what the reader meets the promise in.
+        where = paper("load-bearing-methods")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text()
+            .replace("- closes: D1", "- closes: D1\n- closes: D2")
+            .replace(
+                "- restates: R2",
+                "- restates: R2\n- opens: D2 (closed by R2) — whether one pixel is"
+                " enough",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert verdict_for(result.report, "debt precedence") == PASS
+
+    def test_a_restating_rung_ahead_of_what_it_restates_is_not_a_precedence_failure(
+        self, render
+    ):
+        # The clean fixture's abstract restates R4 and sits first. `restates`
+        # carries no precedence: an abstract restates what the paper has not
+        # said yet, which is what an abstract is for.
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert verdict_for(result.report, "debt precedence") == PASS
+
+
+class TestTheWalkReadsTheDeclaredRelation:
+    """The walk reads the declared relation and never the section type, or it
+    false-fails on the paper's load-bearing claim."""
+
+    def test_a_load_bearing_claim_carried_by_methods_passes(self, render):
+        result = render("load-bearing-methods", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert verdict_for(result.report, "chain bookkeeping") == PASS
+        assert verdict_for(result.report, "debt precedence") == PASS
+
+    def test_a_unit_bearing_children_closes_a_debt(self, render):
+        # `results` closes D1 and carries two child slots. Debts are opened and
+        # closed by units, so there is no debt edge inside a unit and nothing
+        # for the walk to look at there.
+        result = render("load-bearing-methods", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert verdict_for(result.report, "originating slot children") == PASS
+
+    def test_a_rung_naming_a_child_slot_is_the_pairings_finding_not_the_walks(
+        self, paper, run_in
+    ):
+        where = paper("load-bearing-methods")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text().replace("### R2 — results", "### R2 — results-accuracy")
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 2
+        assert "R2 names `results-accuracy`, which is not a unit" in result.report
+        assert verdict_for(result.report, "chain bookkeeping") == PASS
+        assert verdict_for(result.report, "debt precedence") == PASS
+
+    def test_the_two_rows_are_out_of_scope_at_section_granularity(self, render):
+        result = render(
+            "clean", "MANUSCRIPT.working.md", "--check", "--section", "methods"
+        )
+
+        assert verdict_for(result.report, "chain bookkeeping") == SKIPPED
+        assert verdict_for(result.report, "debt precedence") == SKIPPED
+
+
+class TestTheLocalityTest:
+    """`K8` is mechanically decidable from the two files, which is what makes
+    it a check rather than a habit. It reports; it never gates."""
+
+    def test_the_row_carries_numbers_and_never_a_verdict(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        reported = verdict_for(result.report, "locality test")
+
+        assert reported.startswith("4 units")
+        assert PASS not in reported
+        assert "FAIL" not in reported
+
+    def test_it_names_the_edges_that_escalate(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        reported = verdict_for(result.report, "locality test")
+
+        assert "`D1` introduction→results" in reported
+        assert "abstract restates results" in reported
+
+    def test_a_reported_row_never_changes_the_exit_code(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "0 fail" in result.report
+        assert "1 reported" in result.report
+
+    def test_it_is_out_of_scope_at_section_granularity(self, render):
+        result = render(
+            "clean", "MANUSCRIPT.working.md", "--check", "--section", "methods"
+        )
+
+        assert verdict_for(result.report, "locality test") == SKIPPED
