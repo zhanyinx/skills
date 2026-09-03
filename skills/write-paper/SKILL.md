@@ -55,9 +55,13 @@ Also identify, if they exist:
 - **The spine** — `spine.md`: the whole claim ladder, annotated with drafted actuals. You receive the
   whole ladder, your own brief, and the sources your own brief cites — and nothing else. No other
   unit's brief. No other unit's prose.
-- **The brief** — `briefs/<unit>.md`, either an argument brief or an inventory brief. It carries the
-  unit's propositions, what it must not claim, what it sheds to another unit, what to verify before
-  prose, and its sources. It carries one unit-level word budget and no sub-allocation.
+- **The brief** — `briefs/<unit>.md`, either an argument brief or an inventory brief; the format is
+  [here](BRIEF-FORMAT.md). Which one it is follows from the ladder rather than from the unit's
+  character: an **originating** unit opens a debt and gets an argument brief, a **non-originating**
+  unit closes, restates or inventories and gets an inventory brief. Exactly one zone is
+  reader-facing — `## Argument` or `## Inventory` — and it is the only zone whose content may
+  legitimately reach the prose. The brief carries one unit-level word budget and no sub-allocation;
+  children get no budget at all.
 - **The style stanza** — compose the effective stanza from the map's `## Style` deltas over the
   user-level default file, and **print it at session start with each value's provenance**. Say which
   state you are in: **stanza found, found empty, or running on skill defaults.** The echo is a
@@ -77,6 +81,10 @@ times in seven independent sections with nothing detecting it. When no stanza is
 invariants hold unchanged, the em-dash threshold keeps its skill default of **0**, and **Tier 3
 preferences are not in force — this skill does not invent them.** Say so in one line, and offer to
 create the file.
+
+`## Style`, `## Spine` and `## Skeleton` are **map sections this skill declares**, and their
+templates are [here](MAP-SECTIONS.md). A map missing one is a charting defect: the section is left
+empty rather than omitted, because empty is a state you can announce and absent is not.
 
 ### 2. Draft at pre-agreed seams
 
@@ -195,6 +203,12 @@ figure. Reordering the declaration block is an escalation to the planning ticket
   migration combined.
 - **No uniform paragraph or section shape.** There is no mandated move sequence and no mandated
   transition sentence. Which units reach back is decided by the ladder's debt edges.
+- **Your paragraphs are not the brief's items.** The brief states at most three propositions against
+  a budget of many more paragraphs, so a one-item-per-paragraph walk cannot reach the budget, and the
+  connective and evidential structure between them is yours to build. This rule is stated **here and
+  nowhere else** — a brief that carried it would be carrying an instruction to the writer, which is
+  exactly the class of content that leaks into prose. `render-paper` reports the overlap; the rule
+  lives in this skill.
 - **No rule here may be satisfied by an unconditional transform over finished prose.** Every rule
   that removes or converts a construction requires reading what that construction was doing first. A
   rule that can be executed by find-and-replace will be, and the result is flatter than the text it
@@ -362,6 +376,17 @@ Two facts a session should know before it starts, both measured on a real sectio
   real value or deleting the comment: there is no `RESOLVED` marker and no tombstone.
 - **Never assembles.** Promotion into `MANUSCRIPT.working.md` and the whole-document editorial pass
   are `assemble-paper`'s, once, after every draft has closed.
+
+## What this skill ships
+
+- [`BRIEF-FORMAT.md`](BRIEF-FORMAT.md) — the two brief formats, the axis that chooses between them,
+  and what a brief may not contain. `render-paper` parses a brief; this skill owns its format.
+- [`MAP-SECTIONS.md`](MAP-SECTIONS.md) — the `## Style`, `## Spine` and `## Skeleton` map-section
+  templates. `wayfinder` owns only the requirement that a declared section is instantiated; the
+  domain skill owns the templates, and this skill is the only unit that reads all three.
+
+The two file formats — `skeleton.md` and `spine.md` — are documented by `render-paper`, beside the
+code that parses them.
 
 ## Vocabulary
 
