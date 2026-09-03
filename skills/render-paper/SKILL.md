@@ -101,7 +101,12 @@ The tier answers one question: **would the render emit something false?**
   every slot, a unit and its rung not pairing 1:1, an originating unit bearing children.
 - **Submit-gating** iff the render is faithful but the work is unfinished: an open annotation
   carrying the gate bit, an unfilled skeleton slot, an unfilled document title, a debt the ladder
-  never closes, a debt closed before it is opened.
+  never closes, a debt closed before it is opened, a bare hole left in reader-facing prose, or
+  author workflow state written as a sentence the reader will read. The last of those is the **one
+  mode-dependent row in the gate** — it fails `--submit` and `--check` and merely `WARN`s under
+  `--circulate`, so the same source at the same granularity exits `1` for the first two and `0` for
+  the third. The table above still holds either way, because a `WARN` is not a `FAIL`; see
+  [the two residue lints](#the-two-residue-lints) for why that row alone is softened.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
   source, an unclosed comment, a malformed or unclosed brace, a malformed `skeleton.md` or
   `spine.md`, a declared input that is missing. **Only a brace can refuse, never a comment** — a
@@ -145,6 +150,8 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   originating slot children       PASS
   annotations (gating)            PASS
   unfilled skeleton slot          FAIL — 1 (`methods-imaging`)
+  bare holes                      PASS
+  workflow phrases                PASS
   chain bookkeeping               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   debt precedence                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   em dashes (threshold 0)         FAIL — 2 (line 26)
@@ -154,7 +161,7 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  6 pass, 2 fail, 7 out of scope, 1 reported
+  8 pass, 2 fail, 7 out of scope, 1 reported
   → NOT a claim that this section is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit
@@ -170,11 +177,16 @@ granularity the way every row is; the **manifest is not**, because it is `f(sour
 input to a diff-relative judgement axis. See [the channel](ANNOTATION-CHANNEL.md).
 
 - **Row order is the check registry's order and is fixed**, so the table is diffable across runs.
-- **Three verdicts only:** `PASS`, `FAIL`, and `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`. A check
-  that never looked is a **printed row**, never silently a pass. One word cannot carry the difference
-  between checked-and-fine and never-checked, which is why no single-word verdict is emitted anywhere.
-- A `FAIL` carries its count and what failed.
-- **A reported row carries a number instead of a verdict**, and is tallied apart from the three
+- **Four verdicts only:** `PASS`, `WARN`, `FAIL`, and `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`.
+  A check that never looked is a **printed row**, never silently a pass. One word cannot carry the
+  difference between checked-and-fine and never-checked, which is why no single-word verdict is
+  emitted anywhere.
+- A `FAIL` carries its count and what failed, and a `WARN` carries the same in the advisory channel.
+  **A `WARN` moves no exit code.** It exists so that a check which objects under one mode and merely
+  notes it under another cannot print as a pass; exactly one row uses it, and
+  [the two residue lints](#the-two-residue-lints) explain which and why. Like the reported count, the
+  `warn` tally appears only when something warned.
+- **A reported row carries a number instead of a verdict**, and is tallied apart from the
   verdicts, because a measurement is not a verdict. The `locality test` row prints
   `4 units, 6 slots, 2 cross-unit edges (…)` where a gate row prints `PASS`; what to do about the
   number is judgement the render does not hold. The one exception is the em-dash count, which is
@@ -188,6 +200,92 @@ input to a diff-relative judgement axis. See [the channel](ANNOTATION-CHANNEL.md
 
 The three parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
 failure suppresses the table.
+
+## The two residue lints
+
+Every other check reads structure. These two read **prose**, because some unfinished text is
+grammatical reader-facing prose that no bracket-stripping can see:
+
+> …the residual distance is of order of XX, which is acceptable for our analysis…
+>
+> …archiving the panel stacks is a submission-readiness item.
+
+Neither sentence carries a bracket, an annotation or a marker. Both are the residue an
+annotation-based channel leaves behind, and both would reach a journal by being well-formed.
+
+| lint | tokens | tier |
+|---|---|---|
+| **bare holes** | `XX+`, `TBD`, `TK`, `FIXME`, `???` | submit-gating |
+| **workflow phrases** | `submission-readiness`, `to be confirmed`, `TODO`, `note to self`, `we should`, `pending` | submit-gating; **`WARN` under `--circulate`** |
+
+Both are short, dumb and conservative, and that is what keeps this skill paper-agnostic: **the
+renderer holds no paper's name, no section of one, and no phrase only one manuscript would
+contain.** The bare-hole list is word-bounded and case-sensitive, because biomedical prose is full
+of near misses — `TKI` is a tyrosine kinase inhibitor, `TBX21` a gene, `TBS` a buffer.
+
+**They read the reader's text, not the author's.** Both scan the source with every comment and
+every brace blanked, so a `{{ ! TBD residual }}` is a *marked* hole that the manifest and the gate
+bit already handle, a `TODO` inside a comment is the author talking to the author, and a `FIXME`
+inside a fence is literal text being shown. Only what the reader will actually meet is residue.
+
+### Why the asymmetry between them
+
+The bare-hole list is a **plain gating row**: it fails in every mode, `--circulate` still emits, and
+`--submit` refuses. Its tokens are placeholders by convention, so a hit is nearly always real.
+
+The workflow-phrase lint's tells are much likelier to be legitimate prose — a *pending* trial is a
+fact about the literature and *"we should expect"* is a hedge — so it sits one tier softer: it
+**warns** under `--circulate` and refuses only the submit question (`--submit`, and the `--check`
+that `review-paper` runs). A deliberately dumb lint must not put a failing row in front of an author
+who only wants to circulate a draft.
+
+That is one field on the registry row, not a fourth tier. The tier answers one question — *would the
+render emit something false?* — and folding a second question into it is how a tier comes to be
+switched on twice.
+
+### The calibration, and the cost it accepts
+
+Two different things are recorded here, and they are not the same kind of claim.
+
+**The measurement, made once, on a corpus that is not in this repo.** The bare-hole list scored
+**zero hits** across all thirteen section drafts and the mechanical baseline — **zero false
+positives in 74 KB of biomedical prose** — and **two hits** in the hand-revised manuscript, both
+inside reader-facing claims. That is a historical fact about one corpus, cited from the defect audit
+that produced it, and **nothing in this repo re-runs it**: the corpus is an unpublished manuscript
+held elsewhere, so it cannot be a fixture here.
+
+It is the measurement that warrants refusing rather than warning. Both hits sit in sentences that
+assert something — one concluding *"which is ok for our analysis"* on the basis of a number that is
+literally absent — so stripping either silently would convert a flagged gap into an unsupported
+claim.
+
+**The property, asserted on every test run.** What `tests/test_residue.py` checks is the behaviour
+the measurement was evidence *for*: zero hits over a fixture built to carry every near-miss shape
+biomedical prose contains, and two hits over the two shapes the audit recorded, both landing inside
+reader-facing claims. A second test guards the guard — a calibration fixture that quietly lost its
+near misses would score zero for the wrong reason and nobody would notice.
+
+So the number cannot rot into a lie unnoticed, but do not read it as a live measurement: **if you
+change either token list, the property is re-checked for you and the 74 KB figure is not.** Re-run
+it against the corpus before trusting it again.
+
+**The refusals are safe on this corpus, not in general, and the tests say so as an accepted cost:**
+
+- `46,XX` and `47,XXX` are standard karyotype notation and `TK` is thymidine kinase. The bare-hole
+  list rejects all three.
+- `pending` and `we should` are ordinary academic English. The workflow-phrase lint rejects both.
+
+A wrong refusal breaks a paper that never asked for any of this, so each is asserted in a **negative
+fixture recording what the lint currently rejects** — documented cost, not desired behaviour — so
+that sharpening either one is a deliberate, visible change and not a quietly loosened pattern.
+
+**Neither is a configurable threshold**, and there is no flag to relax either. A configurable
+refusal *is* the override these rules exist to prevent, wearing a config file. `--em-dash-threshold`
+is not a counter-example: it tunes a **reported** row, which has no bucket in the gate and so cannot
+reach the exit code at all. A threshold on a measurement is a reading instrument; a threshold on a
+refusal is an override. What bounds the harm here instead is the tier: a karyotype paper circulates
+freely and is refused only at submission, and a paper with a pending trial in its introduction does
+not even see a failing row until it submits.
 
 ## The reported tier
 
@@ -394,6 +492,13 @@ injection, one level down.
   none.
 - Hold any spine authority beyond the mechanical bookkeeping walk.
 - Judge anything. Every check is decidable by parse; anything else belongs to a judgement axis.
+- **Expose any refusal as a configurable threshold.** There is no flag, no file and no environment
+  variable that relaxes either [residue lint](#the-two-residue-lints), and the same holds for every
+  other refusal here. A configurable refusal *is* the override these rules exist to prevent, wearing
+  a config file. `--em-dash-threshold` is the one threshold on the interface and it is not an
+  exception: it tunes a **reported** row, which cannot reach the exit code. Where a refusal is known
+  to cost something, the cost is carried in a **test** asserting what it currently rejects, so
+  changing it is deliberate and visible.
 
 ## Vocabulary
 
@@ -407,7 +512,9 @@ opens a debt. *proposition* — one item of an argument zone. *shared span* — 
 prose and its brief have verbatim in common. *HOLE* / *SLOT* / *SILENT* — what the reader sees, and
 the only render-behaviour vocabulary there is; *the gate bit* — whether an annotation blocks
 `--submit`, independent of what the reader sees. **There is no kind enum**: the two axes plus the free-text `@owner` carry
-everything, and `@owner` is the one that makes the manifest sendable.
+everything, and `@owner` is the one that makes the manifest sendable. *residue* — unfinished text
+that is grammatical reader-facing prose, so the annotation channel never sees it and no
+bracket-stripping can find it; what [the two lints](#the-two-residue-lints) exist for.
 
 ## Tests
 

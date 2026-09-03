@@ -40,17 +40,24 @@ HARD = "hard"
 GATING = "gating"
 REPORTED = "reported"
 
-# The three verdicts, and nothing else. No single-word verdict is emitted
+# The four verdicts, and nothing else. No single-word verdict is emitted
 # anywhere: one word cannot carry checked-and-fine against never-looked.
 PASS = "PASS"
+WARN = "WARN"
 FAIL = "FAIL"
 SKIPPED = "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
 
-# A fourth outcome, which is not a verdict at all: the row prints a number.
+# A fifth outcome, which is not a verdict at all: the row prints a number.
 NUMBER = "number"
 
 DOCUMENT = "document"
 SECTION = "section"
+
+# The three modes that render or gate. `--scaffold` writes the source and
+# returns before a gate exists, so it is not one of them.
+CIRCULATE = "circulate"
+SUBMIT = "submit"
+CHECK = "check"
 
 # The annotation channel's two axes, and nothing else. There is no kind enum:
 # render behaviour is one axis, the gate bit is the other, and the one
@@ -219,6 +226,35 @@ LONG_SENTENCE = 35
 # ungameable: removing a dash forces the relation work, and doing that work
 # badly still yields an honest count.
 EM_DASH_DEFAULT = 0
+
+# The two residue lints. Both catch **the unmarkable residue**: unfinished text
+# that is grammatical reader-facing prose, so no bracket-stripping can see it.
+# Both are short, dumb and conservative, which is what keeps the renderer
+# paper-agnostic — there is no paper's name, no section of one, and no phrase
+# only one manuscript would contain in either.
+#
+# `G3`'s bare-hole token list. It scored **zero hits** across all thirteen
+# section drafts and the mechanical baseline — zero false positives in 74 KB of
+# biomedical prose — and **two hits** in the hand-revised manuscript, both
+# inside reader-facing claims. That is a measurement made once on a corpus held
+# outside this repo, not something the tests re-run; what they re-run is the
+# property it was evidence for. Both hits are why the tier is submit-gating
+# rather than advisory: each hole sits in a sentence that asserts something, so
+# stripping it silently would convert a flagged gap into an unsupported claim.
+#
+# Word-bounded, because biomedical prose is full of near misses — `TKI` is a
+# tyrosine kinase inhibitor, `TBX21` a gene, `TBS` a buffer. Case-sensitive,
+# because every token on the list is a placeholder by convention.
+BARE_HOLE = re.compile(r"\bXX+\b|\bTBD\b|\bTK\b|\bFIXME\b|\?{3,}")
+
+# `C4`'s workflow-phrase lint. The corpus carried six *"is a submission-readiness
+# item"* sentences inside a section the reader reads, and no bracket-based check
+# could see one of them.
+WORKFLOW_PHRASE = re.compile(
+    r"submission-readiness|to be confirmed|\bTODO\b|note to self|"
+    r"\bwe should\b|\bpending\b",
+    re.IGNORECASE,
+)
 
 BANNER = (
     "---\n"
@@ -648,12 +684,32 @@ class Annotation:
         return "⟦%s: %s⟧" % (self.behaviour, self.label)
 
 
+class Finding:
+    """One residue hit: where it is, and the text that matched.
+
+    It carries the slot it sits under for the same reason an annotation does —
+    the gate is scoped by granularity, so a hit outside the section under
+    render is out of scope rather than silently in it.
+    """
+
+    def __init__(self, token, origin, line, slot_id=None):
+        self.token = token
+        self.origin = origin
+        self.line = line
+        self.slot_id = slot_id
+
+    @property
+    def where(self):
+        return _where(self.origin, self.line)
+
+
 class Source:
     """What the source files say, read once.
 
-    Four things come out of one read and travel together from there to the
+    Six things come out of one read and travel together from there to the
     gate: the anchored blocks in the order they appear, the prose that landed
-    outside every slot, the annotation manifest, and the advisory warnings.
+    outside every slot, the annotation manifest, the advisory warnings, and the
+    two residue lints' findings.
     """
 
     def __init__(self):
@@ -661,6 +717,8 @@ class Source:
         self.stray = []
         self.annotations = []
         self.warnings = []
+        self.bare_holes = []
+        self.workflow_phrases = []
 
 
 def parse_source(paths):
@@ -732,6 +790,15 @@ def _read_one_source(source, text, path):
         taken = _chunk(spans, cursor, stop)
         pending.append(_substitute(text, cursor, stop, taken))
         source.annotations.extend(_attach(taken, current, masked, bare, advisories))
+        # Both lints read `bare` — the text with every comment and every brace
+        # blanked to same-length whitespace — so they see exactly the prose the
+        # reader will meet, and still report the source's own line numbers.
+        # Reading the author-facing channel instead would refuse the very
+        # mechanism that channel exists to provide: a hole is *allowed* to be
+        # named there, and a `TODO` in a comment never reaches a reader.
+        holes, phrases = _residue(bare, cursor, stop, current, path, fenced)
+        source.bare_holes.extend(holes)
+        source.workflow_phrases.extend(phrases)
         if match is None:
             break
         cursor = match.end()
@@ -997,6 +1064,40 @@ def _without_braces(masked, spans):
     offset still points at the author's own text.
     """
     return _blank_spans(masked, [(start, end) for start, end, _ in spans])
+
+
+def _residue(bare, start, stop, block, path, fenced):
+    """Both residue lints over one chunk of reader-facing prose: the bare holes
+    and the workflow phrases, in that order.
+
+    One walk for both, because they take the same six arguments over the same
+    text and differ only in their pattern — two call sites passing one clump
+    twice is how the two come to be scanned over different spans.
+
+    A fence is skipped: it is literal text being shown, not prose being
+    claimed, and nothing else in this parser reads inside one either.
+
+    Scanning `bare` in place rather than a slice keeps every offset pointing at
+    the real source, so `_line_of` reports the source's own line. **A `\\b` at
+    `start` is judged against the character actually there; one at `stop` is
+    not** — `endpos` reads as end of text, the one asymmetry in `re`'s window.
+    It costs nothing here only because every `stop` is a comment's `<`, which
+    `_mask_comments` has blanked to a space, so both readings agree. A chunk
+    that ever ends mid-word would need the boundary re-derived, not re-cropped.
+    """
+    return [
+        [
+            Finding(
+                match.group(0),
+                path,
+                _line_of(bare, match.start()),
+                None if block is None else block.slot_id,
+            )
+            for match in pattern.finditer(bare, start, stop)
+            if not _inside(fenced, match.start())
+        ]
+        for pattern in (BARE_HOLE, WORKFLOW_PHRASE)
+    ]
 
 
 def _collapse(text):
@@ -1965,10 +2066,25 @@ class Verdict:
     def skipped(cls):
         return cls(SKIPPED)
 
+    def advisory(self):
+        """The same verdict in the advisory channel: a `WARN` moves no exit
+        code.
+
+        It is a `WARN` and not a `PASS` because `G6` abolished `CLEAN` for
+        exactly this reason — one word cannot carry checked-and-fine against
+        checked-and-objected, and a warning printed as a pass reintroduces the
+        misleading verdict the table exists to replace.
+        """
+        return Verdict(WARN if self.problems else PASS, self.problems)
+
     def render(self):
-        if self.kind != FAIL:
+        if self.kind not in (WARN, FAIL):
             return self.kind
-        return "%s — %d (%s)" % (FAIL, len(self.problems), "; ".join(self.problems))
+        return "%s — %d (%s)" % (
+            self.kind,
+            len(self.problems),
+            "; ".join(self.problems),
+        )
 
 
 class Count(Verdict):
@@ -2087,6 +2203,46 @@ def check_unfilled_skeleton_slot(paper):
     if paper.granularity == DOCUMENT and not paper.skeleton.title:
         problems.append("the document title")
     return Verdict.over(problems)
+
+
+def check_bare_holes(paper):
+    """No bare hole is left in reader-facing prose.
+
+    A hole nobody marked is the one class of gap this design cannot route: the
+    manifest never hears about it, so the author is never told, and the
+    sentence around it reads as finished. `--circulate` still emits — the hole
+    is right there in the prose, so the render is faithful — but the work is
+    unfinished, so submission is refused.
+
+    **Documented cost:** `46,XX` and `47,XXX` are standard karyotype notation
+    and `TK` is thymidine kinase, and the list fires on all three. It is safe
+    here only because the calibration corpus contains none of them, and a wrong
+    refusal breaks a paper that never asked for any of this. The cost is
+    carried as fog rather than as configuration, because a configurable refusal
+    *is* the override these rules exist to prevent, wearing a config file. What
+    bounds the harm is the tier: a karyotype paper circulates freely.
+    """
+    return Verdict.over(_residue_problems(paper.bare_holes_in_scope))
+
+
+def check_workflow_phrases(paper):
+    """No author workflow state is written as a sentence the reader will read.
+
+    Its tells are far likelier to be legitimate prose than a bare hole's are —
+    a pending trial is a fact about the literature and *"we should expect"* is a
+    hedge, not a note to the author — so this check sits one tier softer: it
+    **warns** under `--circulate` and refuses only the submit question. That is
+    the whole asymmetry, and it is deliberate: a dumb lint must not put a
+    failing row in front of an author who only wants to circulate a draft.
+    """
+    return Verdict.over(_residue_problems(paper.workflow_phrases_in_scope))
+
+
+def _residue_problems(findings):
+    """One line per hit, spelled the way a gating annotation's line is spelled
+    — the position, then the text — because an author acts on both the same
+    way."""
+    return ["%s `%s`" % (finding.where, finding.token) for finding in findings]
 
 
 def _owes_prose(paper, slot):
@@ -2513,8 +2669,8 @@ def report_locality(paper):
 #   hard     originating slot children   (built)
 #   gating   annotations (gating)        (built)
 #   gating   unfilled skeleton slot      (built)
-#   gating   bare holes                  residue lints
-#   gating   workflow phrases            residue lints
+#   gating   bare holes                  (built)
+#   gating   workflow phrases            (built; warns on `--circulate`)
 #   gating   chain bookkeeping           (built)
 #   gating   debt precedence             (built)
 #   reported em dashes                   (built)
@@ -2538,6 +2694,8 @@ REGISTRY = [
     ("originating slot children", HARD, None, check_originating_slot_children),
     ("annotations (gating)", GATING, None, check_gating_annotations),
     ("unfilled skeleton slot", GATING, None, check_unfilled_skeleton_slot),
+    ("bare holes", GATING, None, check_bare_holes),
+    ("workflow phrases", GATING, None, check_workflow_phrases),
     ("chain bookkeeping", GATING, DOCUMENT, check_chain_bookkeeping),
     ("debt precedence", GATING, DOCUMENT, check_debt_precedence),
     (em_dash_row, REPORTED, None, check_em_dashes),
@@ -2559,6 +2717,19 @@ REGISTRY = [
 # three are reported together over the finished piece, because a rhythm number
 # published per seam is a number a drafter tunes at the seam — which is the
 # behaviour `no threshold` exists to prevent.
+
+# The one mode-dependent fact in the whole gate: these checks **warn** rather
+# than fail under `--circulate`, and gate the submit question as usual. It is a
+# set of checks rather than a fourth tier because the tier answers one question
+# — *would the render emit something false?* — and folding a second question
+# into that value is how a tier comes to be switched on twice. Keyed on the
+# check itself rather than on the row's printed name, which is a display
+# string and not an identity.
+#
+# A check earns a place here by being deliberately dumb: one whose false
+# positives are likely enough that failing an author who only wants to
+# circulate a draft would cost more than the check catches.
+ADVISORY_ON_CIRCULATE = {check_workflow_phrases}
 
 # The parse-tier rows print `PASS` whenever a table prints at all, because a
 # parse-tier failure suppresses the table.
@@ -2584,6 +2755,8 @@ class Paper:
         self.stray = source.stray
         self.annotations = source.annotations
         self.warnings = source.warnings
+        self.bare_holes = source.bare_holes
+        self.workflow_phrases = source.workflow_phrases
         self.granularity = granularity
         self.unit = unit
         self.em_dash_threshold = em_dash_threshold
@@ -2614,14 +2787,27 @@ class Paper:
         not: it enters whole, because it is `f(source)` recomputed per render
         and an absolute input to a diff-relative judgement axis.
         """
+        return self._in_scope(self.annotations)
+
+    @property
+    def bare_holes_in_scope(self):
+        return self._in_scope(self.bare_holes)
+
+    @property
+    def workflow_phrases_in_scope(self):
+        return self._in_scope(self.workflow_phrases)
+
+    def _in_scope(self, found):
+        """Anything carrying a `slot_id`, scoped to this granularity.
+
+        One implementation for all three, because "is this in scope" is one
+        fact: three copies of it is how a section render comes to gate on a
+        different set than the row above it claims.
+        """
         if self.granularity == DOCUMENT:
-            return self.annotations
+            return found
         in_scope = set(slot.id for slot in self.slots)
-        return [
-            annotation
-            for annotation in self.annotations
-            if annotation.slot_id in in_scope
-        ]
+        return [one for one in found if one.slot_id in in_scope]
 
 
 def render_document(paper):
@@ -2722,7 +2908,7 @@ def format_warnings(warnings):
 def format_report(rows, granularity):
     """The table `review-paper` reports verbatim, so its shape is an interface."""
     lines = []
-    counts = {PASS: 0, FAIL: 0, SKIPPED: 0, NUMBER: 0}
+    counts = {PASS: 0, WARN: 0, FAIL: 0, SKIPPED: 0, NUMBER: 0}
     for name, verdict in rows:
         lines.append("%s%s %s" % (INDENT, name.ljust(NAME_WIDTH - 1), verdict.render()))
         counts[verdict.kind] += 1
@@ -2733,6 +2919,12 @@ def format_report(rows, granularity):
         counts[FAIL],
         counts[SKIPPED],
     )
+    if counts[WARN]:
+        # Counted apart from the fails, and printed only when something warned:
+        # a permanent `0 warn` on every table would make "nothing warned" and
+        # "this build does not warn" the same line, and the reported tier
+        # already settled that question for its own count this way.
+        tally += ", %d warn" % counts[WARN]
     if counts[NUMBER]:
         # Counted apart from the verdicts, because a number is not one.
         tally += ", %d reported" % counts[NUMBER]
@@ -2744,12 +2936,20 @@ def format_report(rows, granularity):
     return "\n".join(lines) + "\n"
 
 
-def run_gate(paper):
+def run_gate(paper, mode):
     """Every row in registry order, and the failed rows by tier.
 
     Only the tiers that can gate have a bucket, so a reported row's FAIL lands
     nowhere at all. That is the mechanism by which it cannot reach the exit
     code: not a rule the caller has to honour, but a bucket that is not there.
+
+    An `ADVISORY_ON_CIRCULATE` check is the one row whose verdict depends on
+    the mode: under `--circulate` its `FAIL` becomes a `WARN`, which no bucket
+    accepts either, and under the two modes that answer the submit question —
+    `--submit` and `--check`, the one `review-paper` runs — it is an ordinary
+    gating failure. The table's *shape* is mode-independent, because
+    `review-paper` reports it verbatim. `mode` is a property of the invocation
+    rather than of the paper, so it arrives here and not on `Paper`.
     """
     rows = [(name, Verdict(PASS)) for name in PARSE_ROWS]
     failed = {HARD: [], GATING: []}
@@ -2760,6 +2960,8 @@ def run_gate(paper):
             if scope == DOCUMENT and paper.granularity == SECTION
             else check(paper)
         )
+        if check in ADVISORY_ON_CIRCULATE and mode == CIRCULATE:
+            verdict = verdict.advisory()
         rows.append((label, verdict))
         if verdict.kind == FAIL and tier in failed:
             failed[tier].append((label, verdict))
@@ -2879,7 +3081,8 @@ def main(argv=None):
     paper = Paper(
         skeleton, spine, briefs, source, granularity, unit, args.em_dash_threshold
     )
-    rows, failed = run_gate(paper)
+    mode = SUBMIT if args.submit else CHECK if args.check else CIRCULATE
+    rows, failed = run_gate(paper, mode)
     report = (
         format_report(rows, granularity)
         + format_manifest(paper.annotations)

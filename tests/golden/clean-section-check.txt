@@ -6,6 +6,8 @@
   originating slot children       PASS
   annotations (gating)            PASS
   unfilled skeleton slot          PASS
+  bare holes                      PASS
+  workflow phrases                PASS
   chain bookkeeping               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   debt precedence                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   em dashes (threshold 0)         PASS — 0
@@ -16,7 +18,7 @@
   sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  8 pass, 0 fail, 7 out of scope, 2 reported
+  10 pass, 0 fail, 7 out of scope, 2 reported
   → NOT a claim that this section is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit
