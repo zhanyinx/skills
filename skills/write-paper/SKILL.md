@@ -401,6 +401,8 @@ Two facts a session should know before it starts, both measured on a real sectio
 - [`MAP-SECTIONS.md`](MAP-SECTIONS.md) — the `## Style`, `## Spine` and `## Skeleton` map-section
   templates. `wayfinder` owns only the requirement that a declared section is instantiated; the
   domain skill owns the templates, and this skill is the only unit that reads all three.
+- [`STYLE-STANZA.md`](STYLE-STANZA.md) — the style stanza's keyed schema and its values-blank
+  exemplar. The map-section template names no key, so this is the key set's one home.
 
 The two file formats — `skeleton.md` and `spine.md` — are documented by `render-paper`, beside the
 code that parses them.

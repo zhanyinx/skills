@@ -35,10 +35,10 @@ recorded both as settled fact and both were false.
 **Keyed deltas against the drafting skill's key set, plus additive prose.**
 
 That sentence is the whole of the template's own instruction, deliberately. The key set, its value
-domains, its tiers and its composition rules live in the **style-stanza schema this skill ships**,
-in exactly one place; enumerating them here would put an academic-writing vocabulary into a map
-template and give one fact two homes. An effort wanting a preference outside the key set writes
-prose, which is advisory to the drafter and not machine-read.
+domains, its tiers and its composition rules live in [`STYLE-STANZA.md`](STYLE-STANZA.md), the
+schema this skill ships, in exactly one place; enumerating them here would put an academic-writing
+vocabulary into a map template and give one fact two homes. An effort wanting a preference outside
+the key set writes prose, which is advisory to the drafter and not machine-read.
 
 `## Style` is where framing rules live — global to the effort, never per-unit. They sat in briefs
 only because there was nowhere else to put them, and a framing rule in a brief is one
