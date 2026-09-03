@@ -1,0 +1,9 @@
+  skeleton / spine grammar  PASS
+  source grammar            PASS
+  slot integrity            PASS
+  unit / rung pairing       PASS
+  originating slot children PASS
+  unfilled skeleton slot    PASS
+
+  6 pass, 0 fail, 0 out of scope
+  → NOT a claim that this document is finished
