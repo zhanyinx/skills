@@ -93,7 +93,7 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   unit / rung pairing             PASS
   originating slot children       PASS
   unfilled skeleton slot          FAIL — 1 (`methods-imaging`)
-  em dashes (threshold 0)         FAIL — 2 (lines 26, 26)
+  em dashes (threshold 0)         FAIL — 2 (line 26)
   single-sentence body paragraphs 0 in 0 originating units
   adversative ratio               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
@@ -127,24 +127,25 @@ number here can be over any bar and `--submit` still emits.
 
 | row | what it reports | threshold |
 |---|---|---|
-| `em dashes (threshold N)` | the count in body prose, and every line it sits on | **yes**, from the caller |
+| `em dashes (threshold N)` | the count in body prose, and every line it sits on, each named once | **yes**, from the caller |
 | `single-sentence body paragraphs` | the count, and the lines, over originating units only | none |
 | `adversative ratio` | sentences that mark a turn, over sentences in scope | none |
-| `subject openings` | how the sentences begin, most frequent first | none |
+| `subject openings` | how the sentences begin, most frequent first; every opening used more than once by name, the rest as a count of openings used once | none |
 | `sentence length` | mean, coefficient of variation, share over 35 words | none |
 
 **The em-dash count is the one measured against a bar.** An em dash marks a logical relation without
 naming it; the ban failed 98 times as a bullet a drafting session attested to, and it is exactly as
 countable as a figure reference. So it is counted here, and the same count is a **blocking gate at
-the drafting seam** — one implementation, invoked twice. Removal is relation-first: name the relation,
-then use the construction that carries it. Never by find-and-replace.
+the drafting seam** — one implementation, invoked twice. **How to remove one is not this unit's
+business:** that is a drafting invariant, enforced by judgement where the prose is written.
 
 **The threshold is a finite non-negative integer**, supplied by the caller from its `## Style`, and
 the skill default is **0**. There is no `off`, no `none` and no infinity: an effort may raise the bar
 as far as it likes, visibly, and cannot remove the gate. **The count prints on both sides of the
 bar**, so raising it makes the bar visible and never the number invisible.
 
-**The other three carry no threshold at all**, by design. An em-dash count is a *ceiling on a
+**The other three are the Tier 4 diagnostics** — the style stanza's fourth tier, *a measured number
+about the prose* — and they are reported together, **with no threshold at all**, by design. An em-dash count is a *ceiling on a
 prohibited token* — zero is honestly achievable and ungameable, since removing a dash forces the
 relation work and doing that work badly still yields an honest count. An adversative count would be
 a *floor on a rhetorical move*, and the cheapest way to clear a floor is to sprinkle `however` over
@@ -165,7 +166,10 @@ then prints `0 in 0 originating units`, which says why the number is zero.
 
 Scope is **defined, not assumed**, or the count fires on text no author wrote as prose. In scope: the
 body prose of every anchored slot at this granularity. Out of scope: HTML comments, annotation
-braces, citation groups in `[…]`, pipe-table rows, and fenced code blocks. Headings never arrive at
+braces, citation groups (a `[…]` span carrying a citation key), pipe-table rows, and fenced code
+blocks. A bracket span with no key is **prose**: this design reserves `[…]` for citation groups, but
+until that rule is enforced by parse, blanking such a span would shorten the sentence every number
+is measured over. Headings never arrive at
 all — the skeleton owns them and the render injects them. Every excluded span is **blanked rather
 than deleted**, so a reported line number is the author's own line number.
 

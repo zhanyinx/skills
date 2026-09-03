@@ -7,7 +7,7 @@
   em dashes (threshold 0)         PASS — 0
   single-sentence body paragraphs 0 in 0 originating units
   adversative ratio               0 of 1 sentence (0%)
-  subject openings                The 1 (of 1 sentence)
+  subject openings                1 used once (of 1 sentence)
   sentence length                 mean 5.0, CV 0.00, 0% over 35 words (1 sentence)
 
   6 pass, 1 fail, 0 out of scope, 4 reported

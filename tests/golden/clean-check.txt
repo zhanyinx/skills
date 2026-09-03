@@ -7,7 +7,7 @@
   em dashes (threshold 0)         PASS — 0
   single-sentence body paragraphs 1 in 1 originating unit (line 8)
   adversative ratio               0 of 6 sentences (0%)
-  subject openings                Accuracy 1, Cyclic 1, Panels 1, Registration 1, The 1, +1 more (of 6 sentences)
+  subject openings                6 used once (of 6 sentences)
   sentence length                 mean 13.7, CV 0.22, 0% over 35 words (6 sentences)
 
   7 pass, 0 fail, 0 out of scope, 4 reported

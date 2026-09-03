@@ -7,18 +7,27 @@ what a caller can see: the exit code, the emitted document, the verdict report.
 PASS = "PASS"
 SKIPPED = "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
 
-# The verdict column starts here: the report's two-space indent plus the width
-# the row names are padded to.
-VERDICT_COLUMN = 33
+# The verdict column starts here: the report's two-space indent, the width the
+# row names are padded to, and the single space after it.
+VERDICT_COLUMN = 34
 
 
 def rows_of(report):
     """The verdict table as `{row name: what that row printed}`."""
     return dict(
         (line[:VERDICT_COLUMN].strip(), line[VERDICT_COLUMN:].strip())
-        for line in report.splitlines()
-        if line.startswith("  ") and line[2:3] != " "
+        for line in table_lines(report)
     )
+
+
+def table_lines(report):
+    """The report's rows: everything above the blank line before the tally."""
+    lines = []
+    for line in report.splitlines():
+        if not line.strip():
+            break
+        lines.append(line)
+    return lines
 
 
 class TestCheckMode:
@@ -798,3 +807,49 @@ class TestTheReportedTier:
         assert rows_of(result.report)["em dashes (threshold 0)"] == (
             "FAIL — 2 (abstract.md:4, results.md:4)"
         )
+
+    def test_an_abbreviation_does_not_end_a_sentence(self, paper, run_in):
+        # `Fig. 2` is mid-sentence; `no.` is a word a sentence can end on, and
+        # merging two sentences would corrupt every number measured over them.
+        where = paper("clean")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "We register cyclic imaging panels across rounds and report the accuracy "
+                "of that registration.",
+                "Drift is visible in Fig. 2 of the earlier report. Whether it was ever "
+                "corrected: no. We report the accuracy of the registration.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert "(8 sentences)" in rows_of(result.report)["sentence length"]
+
+    def test_a_bracket_span_with_no_citation_key_is_prose(self, paper, run_in):
+        # Blanking a bracket span that is not a citation group would shorten
+        # the sentence every number is measured over, and hide an em dash
+        # sitting in prose the author wrote.
+        where = paper("prose-diagnostics")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "Registration drift is unaddressed.",
+                "Registration drift [the earlier review — unaddressed] is the gap.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["em dashes (threshold 0)"] == (
+            "FAIL — 4 (lines 4, 8, 18, 23)"
+        )
+
+    def test_every_row_prints_its_verdict_in_the_same_column(self, render):
+        # The table is an interface `review-paper` reports verbatim, and the
+        # column is what a longer row name breaks silently.
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        for line in table_lines(result.report):
+            assert line[VERDICT_COLUMN - 1] == " "
+            assert line[VERDICT_COLUMN] != " "

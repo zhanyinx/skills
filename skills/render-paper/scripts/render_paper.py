@@ -71,14 +71,21 @@ RUNG_ID = re.compile(r"^R\d+$")
 # source title fires on text no author wrote as prose.
 EM_DASH = "—"
 TABLE_ROW = re.compile(r"^ {0,3}\|.*$", re.MULTILINE)
-BRACKET_SPAN = re.compile(r"\[[^\[\]]*\]")
+# A `[…]` span carrying a citation key. The format reserves every bracket span
+# for a citation group, but this pattern asks for the key anyway: until that
+# rule is enforced by parse, a span with no key is prose, and blanking prose
+# would quietly shorten the sentence every number is measured over.
+CITATION_GROUP = re.compile(r"\[[^\[\]]*@[^\[\]]*\]")
 BRACE_SPAN = re.compile(r"\{[^{}]*\}")
 
 # Sentence splitting is mechanical and conservative: a terminator followed by
-# whitespace, unless what precedes it is an abbreviation or an initial.
+# whitespace, unless what precedes it is an abbreviation or an initial. The
+# list holds nothing that is also a word a sentence can end on — `no.` is left
+# out for that reason, because merging two sentences corrupts every number
+# measured over them, and `no.` for `number` is rare in body prose.
 SENTENCE_END = re.compile(r"[.!?][\"'’”)\]]*(?=\s|$)")
 ABBREVIATION = re.compile(
-    r"(?:\b(?:et al|e\.g|i\.e|cf|vs|Fig|Figs|Eq|Ref|no|approx|ca|Dr|Prof|Mr|Mrs|Ms|St)\.|"
+    r"(?:\b(?:et al|e\.g|i\.e|cf|vs|Fig|Figs|Eq|Ref|approx|ca|Dr|Prof|Mr|Mrs|Ms|St)\.|"
     r"\b[A-Z]\.)$"
 )
 
@@ -89,14 +96,17 @@ WORD = re.compile(r"[^\W_]+(?:['’\-][^\W_]+)*")
 # The connectives that mark a turn. The list is deliberately short and dumb:
 # the number it produces is read as a consequence of the em-dash gate forcing
 # relation-first rewriting, never as a target to be hit.
+# `while` is deliberately absent: in scientific prose it is usually temporal
+# ("while the samples incubated"), and this number carries no threshold, so an
+# inflated one is a false signal to the reader in the way a spurious `however`
+# is. The count errs toward under-reporting.
 ADVERSATIVE = re.compile(
-    r"\b(?:however|but|yet|although|though|whereas|while|nevertheless|nonetheless|"
+    r"\b(?:however|but|yet|although|though|whereas|nevertheless|nonetheless|"
     r"conversely|despite|even so|by contrast|in contrast|in spite of)\b",
     re.IGNORECASE,
 )
 
 LONG_SENTENCE = 35
-OPENINGS_SHOWN = 5
 
 # The skill-level default threshold. Zero is honestly achievable and
 # ungameable: removing a dash forces the relation work, and doing that work
@@ -718,23 +728,30 @@ def find_paper_root(source, override):
 
 def scope_prose(raw):
     """The prose a diagnostic may read, with everything else blanked out."""
-    scoped = _blank(raw, _fenced_spans(raw))
-    for pattern in (TABLE_ROW, BRACKET_SPAN, BRACE_SPAN):
-        scoped = pattern.sub(_spaces, scoped)
+    scoped = _blank_spans(raw, _fenced_spans(raw))
+    for pattern in (TABLE_ROW, CITATION_GROUP, BRACE_SPAN):
+        scoped = pattern.sub(_blank_match, scoped)
     return scoped
 
 
-def _blank(text, spans):
+def _blank_spans(text, spans):
+    """Blank the given character ranges of `text`."""
     for start, end in reversed(spans):
         text = text[:start] + _blanked(text[start:end]) + text[end:]
     return text
 
 
-def _spaces(match):
+def _blank_match(match):
+    """Blank what a pattern matched, for `re.sub`."""
     return _blanked(match.group(0))
 
 
 def _blanked(text):
+    """The same text, same length, same newlines, no content.
+
+    Length and newlines are what make a reported line number the author's own,
+    so nothing here ever deletes a character.
+    """
     return "".join("\n" if char == "\n" else " " for char in text)
 
 
@@ -798,7 +815,13 @@ def sentences_in_scope(paper):
 
 
 def words(sentence):
+    """The words of one sentence, as `WORD` above defines a word."""
     return WORD.findall(sentence)
+
+
+def _line_in(block, scoped, offset):
+    """The source line an offset into a block's prose sits on."""
+    return block.raw_line + _line_of(scoped, offset) - 1
 
 
 def _locations(spots):
@@ -806,15 +829,20 @@ def _locations(spots):
 
     Bare line numbers over one source file, and file-qualified over several —
     pre-promotion the sections are still separate files, where a bare `line 3`
-    could mean any of them.
+    could mean any of them. Each location prints once: the count already
+    carries the multiplicity, and a line named twice reads as two places.
     """
     if not spots:
         return ""
     names = set(name for name, _ in spots)
+    distinct = []
+    for spot in spots:
+        if spot not in distinct:
+            distinct.append(spot)
     if len(names) == 1:
-        lines = ", ".join(str(line) for _, line in spots)
-        return " (%s %s)" % ("line" if len(spots) == 1 else "lines", lines)
-    return " (%s)" % ", ".join("%s:%d" % spot for spot in spots)
+        lines = ", ".join(str(line) for _, line in distinct)
+        return " (%s %s)" % ("line" if len(distinct) == 1 else "lines", lines)
+    return " (%s)" % ", ".join("%s:%d" % spot for spot in distinct)
 
 
 def _plural(count, noun):
@@ -827,7 +855,12 @@ def _plural(count, noun):
 
 
 class Verdict:
-    """One row's outcome: which of the three verdicts, and what failed."""
+    """One row's outcome, and what it prints.
+
+    Three of the four shapes are verdicts — `PASS`, `FAIL`, `SKIPPED` — and the
+    fourth is a measurement, which is why a subclass may print a number where a
+    verdict word would otherwise go.
+    """
 
     def __init__(self, kind, problems=()):
         self.kind = kind
@@ -947,8 +980,7 @@ def check_originating_slot_children(paper):
     """
     problems = []
     for unit in paper.units:
-        rung = paper.spine.rung_for(unit.id)
-        if rung is not None and rung.originating and unit.children:
+        if _originates(paper, unit) and unit.children:
             problems.append(
                 "`%s` opens a debt and carries %d children"
                 % (unit.id, len(unit.children))
@@ -994,11 +1026,10 @@ def check_em_dashes(paper):
     """
     spots = []
     for block, scoped in in_scope(paper):
-        for offset, char in enumerate(scoped):
-            if char == EM_DASH:
-                spots.append(
-                    (block.origin.name, block.raw_line + scoped.count("\n", 0, offset))
-                )
+        offset = scoped.find(EM_DASH)
+        while offset >= 0:
+            spots.append((block.origin.name, _line_in(block, scoped, offset)))
+            offset = scoped.find(EM_DASH, offset + 1)
     return Count(len(spots), paper.em_dash_threshold, spots)
 
 
@@ -1026,6 +1057,7 @@ def check_single_sentence_paragraphs(paper):
 
 
 def _originates(paper, unit):
+    """Whether this unit opens a debt, as the ladder declares it."""
     rung = paper.spine.rung_for(unit.id)
     return rung is not None and rung.originating
 
@@ -1059,6 +1091,13 @@ def check_subject_openings(paper):
     the adversative floor's problem in reverse, and the measured drafting rate
     was 6%. The opening word is what the audit measured, so it is what this
     reports.
+
+    Every opening used more than once prints, however far down the order,
+    because concentration is the thing being read and a moderately used
+    opening is exactly what the audit's 6% was. The openings used once carry
+    no concentration, so they arrive as their own count rather than by name —
+    which keeps the row bounded without hiding a repeated opening behind a
+    rank cut.
     """
     found = sentences_in_scope(paper)
     if not found:
@@ -1069,9 +1108,10 @@ def check_subject_openings(paper):
         if opening:
             tally[opening[0]] = tally.get(opening[0], 0) + 1
     ranked = sorted(tally.items(), key=lambda pair: (-pair[1], pair[0]))
-    shown = ["%s %d" % pair for pair in ranked[:OPENINGS_SHOWN]]
-    if len(ranked) > OPENINGS_SHOWN:
-        shown.append("+%d more" % (len(ranked) - OPENINGS_SHOWN))
+    shown = ["%s %d" % pair for pair in ranked if pair[1] > 1]
+    once = [opening for opening, count in ranked if count == 1]
+    if once:
+        shown.append("%d used once" % len(once))
     return Number(
         "%s (of %s)" % (", ".join(shown), _plural(len(found), "sentence"))
     )
@@ -1288,11 +1328,12 @@ def format_report(rows, granularity):
 def run_gate(paper):
     """Every row in registry order, and the failed rows by tier.
 
-    A reported row's failure is collected like any other and read by nobody:
-    only the hard and gating buckets reach the exit code.
+    Only the tiers that can gate have a bucket, so a reported row's FAIL lands
+    nowhere at all. That is the mechanism by which it cannot reach the exit
+    code: not a rule the caller has to honour, but a bucket that is not there.
     """
     rows = [(name, Verdict(PASS)) for name in PARSE_ROWS]
-    failed = {HARD: [], GATING: [], REPORTED: []}
+    failed = {HARD: [], GATING: []}
     for name, tier, scope, check in REGISTRY:
         label = name(paper) if callable(name) else name
         verdict = (
@@ -1301,7 +1342,7 @@ def run_gate(paper):
             else check(paper)
         )
         rows.append((label, verdict))
-        if verdict.kind == FAIL:
+        if verdict.kind == FAIL and tier in failed:
             failed[tier].append((label, verdict))
     return rows, failed
 

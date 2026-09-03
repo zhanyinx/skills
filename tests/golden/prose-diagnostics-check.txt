@@ -7,7 +7,7 @@
   em dashes (threshold 0)         FAIL — 3 (lines 4, 18, 23)
   single-sentence body paragraphs 2 in 1 originating unit (lines 8, 10)
   adversative ratio               2 of 9 sentences (22%)
-  subject openings                The 4, Accuracy 1, However 1, Registration 1, That 1, +1 more (of 9 sentences)
+  subject openings                The 4, 5 used once (of 9 sentences)
   sentence length                 mean 19.1, CV 0.76, 11% over 35 words (9 sentences)
 
   6 pass, 1 fail, 0 out of scope, 4 reported
