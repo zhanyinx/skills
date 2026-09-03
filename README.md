@@ -41,7 +41,9 @@ It carries **construction rules only** — rules that hold while the sentence is
 
 ### review-paper
 
-Review a piece of academic writing since a fixed point along two axes — **Fidelity** (does the text accurately represent its evidence, sources, and literature?) and **Craft** (is the prose clear, non-redundant, correctly hedged?) — plus a direct **cross-reference integrity** check. The two axes run as parallel sub-agents; results are reported side by side.
+Review a piece of academic writing in three parts: the **gate**, whose per-check verdict table comes from `render-paper` and is reported verbatim, and **Fidelity** (does the text represent its evidence, sources and literature accurately?) and **Craft** (is the prose clear, non-redundant, correctly hedged?), which run as parallel sub-agents. The gate takes no fixed point and always reads the whole render, so a defect inherited unchanged from an earlier draft cannot be invisible; the judgement axes take a **pair** — previous render plus skeleton revision — because one line of the skeleton can make two renders differ everywhere while moving no prose.
+
+It **reports; it never gates.** A finding becomes blocking by being written back into the source as an annotation carrying the gate bit, which the gate then enforces — so there is exactly one refusal authority and it is mechanical. Write authority is annotations that emit nothing, which is what makes it safe for a judging skill to write into the artifact it judges. No single-word verdict is emitted anywhere: one word cannot carry the difference between checked-and-fine and never-looked.
 
 ### assemble-paper
 
