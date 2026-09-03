@@ -1,0 +1,14 @@
+  skeleton / spine grammar        PASS
+  source grammar                  PASS
+  slot integrity                  PASS
+  unit / rung pairing             PASS
+  originating slot children       PASS
+  unfilled skeleton slot          PASS
+  em dashes (threshold 0)         FAIL — 3 (lines 4, 18, 23)
+  single-sentence body paragraphs 2 in 1 originating unit (lines 8, 10)
+  adversative ratio               2 of 9 sentences (22%)
+  subject openings                The 4, 5 used once (of 9 sentences)
+  sentence length                 mean 19.1, CV 0.76, 11% over 35 words (9 sentences)
+
+  6 pass, 1 fail, 0 out of scope, 4 reported
+  → NOT a claim that this document is finished
