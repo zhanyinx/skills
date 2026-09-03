@@ -74,11 +74,15 @@ The tier answers one question: **would the render emit something false?**
   carrying the gate bit, an unfilled skeleton slot, or an unfilled document title.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
   source, an unclosed comment, a malformed or unclosed brace, a malformed `skeleton.md` or
-  `spine.md`, a declared input that is missing.
+  `spine.md`, a declared input that is missing. **Only a brace can refuse, never a comment** — a
+  parse error is for what the source cannot express into *reader-facing* prose, and a comment never
+  reaches the reader.
 
-Two lints sit under all three tiers and move **no** exit code: a brace label over 80 characters, and
-a bare brace standing alone in its own block. They print in a `warnings` block on stderr. A hard cap
-on either was rejected — it over- and under-fires at once.
+A `warnings` block on stderr sits under all three tiers and moves **no** exit code: a brace label
+over 80 characters, a bare brace standing alone in its own block, a label that opens `slot:` in case
+`SLOT:` was meant, and a keyed comment that matches no brace. A hard cap or a refusal on any of them
+was rejected — each over- and under-fires at once, and a wrong refusal breaks a paper that never
+asked for any of this.
 
 ### A parse error is not a gate
 

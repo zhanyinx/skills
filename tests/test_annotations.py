@@ -239,6 +239,44 @@ class TestWhatEntersTheManifest:
         assert entry.rstrip().endswith("unverified:")
         assert "!  SILENT" in entry
 
+    def test_a_comment_never_refuses_because_it_is_never_reader_facing(
+        self, paper, run_in
+    ):
+        # A parse error is for what the source cannot express into
+        # reader-facing prose. `@owner` is free text, so a second `@` is the
+        # author's business — it warns at most, and the render still runs.
+        where = paper("annotations")
+        source = where / SOURCE
+        source.write_text(
+            source.read_text().replace(
+                "<!-- @author waiting on the IRB number before submission -->",
+                "<!-- @author @jane please confirm the IRB number -->",
+            )
+        )
+
+        result = run_in(where, SOURCE, "--check")
+
+        assert result.exit_code == 1  # the gate bits, not this
+        assert "@jane please confirm the IRB number" in manifest_of(result.report)
+
+    def test_a_comment_naming_nothing_after_its_prefix_warns_and_still_enters(
+        self, paper, run_in
+    ):
+        where = paper("annotations")
+        source = where / SOURCE
+        source.write_text(
+            source.read_text().replace(
+                "<!-- @author waiting on the IRB number before submission -->",
+                "<!-- @author -->",
+            )
+        )
+
+        result = run_in(where, SOURCE, "--check")
+
+        assert result.exit_code == 1
+        assert "names nothing after it" in warnings_of(result.report)
+        assert "10 open annotations" in result.report
+
     def test_a_comment_that_opens_with_an_owner_enters_and_does_not_gate(
         self, render
     ):
@@ -513,6 +551,25 @@ class TestTheDirectionalClause:
 
         assert "direction: `raised` is committed before this value exists" in entry
 
+    def test_a_bare_quantifier_is_not_a_direction(self, paper, run_in):
+        # The manifest is the artifact that gets sent to a co-author, so a
+        # noisy one is a skipped one. `more than 500` commits no direction.
+        where = paper("annotations")
+        source = where / SOURCE
+        source.write_text(
+            source.read_text().replace(
+                "{{ the funder acknowledgement }}",
+                "More than 500 panels were counted, of which "
+                "{{ the flagged count }} failed.",
+            )
+        )
+
+        result = run_in(where, SOURCE, "--check")
+
+        assert "the flagged count" in manifest_of(result.report)
+        assert "`More`" not in result.report
+        assert "direction: `raised`" in result.report  # a verb of change still does
+
     def test_a_hole_under_no_directional_word_carries_no_direction_line(self, render):
         result = render("annotations", SOURCE, "--check")
         entry = manifest_of(result.report).split("the funder acknowledgement")[1]
@@ -574,9 +631,12 @@ class TestBraceGrammarIsAParseError:
         assert result.exit_code == 3
         assert "once each, in that order" in result.report
 
-    def test_a_near_miss_slot_marker_is_a_parse_error(self, paper, run_in):
-        # A brace whose first token claims to be `SLOT:` and is not would
-        # otherwise become a HOLE silently.
+    def test_a_near_miss_slot_marker_warns_rather_than_refusing(self, paper, run_in):
+        # Under the grammar a label opening `slot:` is a perfectly good noun
+        # phrase, so refusing it would be a refusal the grammar never asked
+        # for — and a wrong refusal breaks a paper that never asked for any of
+        # this. It still says so, because a mistyped marker would otherwise
+        # become a HOLE silently.
         where = paper("annotations")
         source = where / SOURCE
         source.write_text(
@@ -587,8 +647,23 @@ class TestBraceGrammarIsAParseError:
 
         result = run_in(where, SOURCE, "--check")
 
-        assert result.exit_code == 3
-        assert "claims to be a venue slot" in result.report
+        assert result.exit_code == 1  # the gate bits, not this
+        assert "the marker is `SLOT:`" in warnings_of(result.report)
+
+    def test_and_still_behaves_as_the_hole_the_grammar_says_it_is(
+        self, paper, run_in
+    ):
+        where = paper("annotations")
+        source = where / SOURCE
+        source.write_text(
+            source.read_text().replace(
+                "{{ SLOT: ethics approval number }}", "{{ slot: ethics approval number }}"
+            )
+        )
+
+        result = run_in(where, SOURCE, "--circulate")
+
+        assert "⟦HOLE: slot: ethics approval number⟧" in result.document
 
     def test_a_brace_inside_a_comment_is_not_a_brace(self, render):
         # The reasoning comment holds `{{…}}` as a join key, not as an

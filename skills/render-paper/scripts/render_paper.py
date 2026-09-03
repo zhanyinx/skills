@@ -53,7 +53,7 @@ VENUE_SLOT = "SLOT"  # `SLOT:` inside braces is a venue field, never a section
 SILENT = "SILENT"
 
 DEFAULT_OWNER = "@author"
-LABEL_ADVISORY = 80
+LABEL_ADVISORY_CHARS = 80
 
 NAME_WIDTH = 26
 BEHAVIOUR_WIDTH = 6
@@ -83,13 +83,19 @@ SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
 # The directional-word list is short, dumb and conservative, the way the other
 # residue lints are, so the renderer stays paper-agnostic. It buys one manifest
 # line, never a gate of its own: the direction inherits the hole's bit.
+#
+# Verbs of change, plus the comparatives of quality that commit a direction
+# about the missing value itself. The bare quantifiers — `more`, `less`,
+# `fewer`, `greater`, `smaller` — are deliberately absent: "more than 500 cells
+# were counted, of which {{ the flagged count }} failed" commits no direction,
+# and the manifest is the artifact that gets sent to a co-author, so a noisy
+# one is a skipped one.
 DIRECTIONAL = re.compile(
     r"\b("
     r"raise[sd]?|raising|lower(?:s|ed|ing)?|rise[sn]?|rose|fell|fall(?:s|en)?|"
     r"increase[sd]?|increasing|decrease[sd]?|decreasing|improve[sd]?|improving|"
     r"reduce[sd]?|reducing|gain(?:s|ed)?|drop(?:s|ped)?|exceed(?:s|ed)?|"
-    r"outperform(?:s|ed)?|higher|better|worse|greater|smaller|more|fewer|less|"
-    r"faster|slower|stronger|weaker"
+    r"outperform(?:s|ed)?|higher|better|worse|faster|slower|stronger|weaker"
     r")\b",
     re.IGNORECASE,
 )
@@ -487,7 +493,7 @@ class Annotation:
     submission.
     """
 
-    def __init__(self, behaviour, gate, owner, label, origin, line, slot_id):
+    def __init__(self, behaviour, gate, owner, label, origin, line, slot_id=None):
         self.behaviour = behaviour
         self.gate = gate
         self.owner = owner or DEFAULT_OWNER
@@ -500,7 +506,7 @@ class Annotation:
 
     @property
     def where(self):
-        return "%s:%d" % (self.origin.name, self.line)
+        return _where(self.origin, self.line)
 
     @property
     def token(self):
@@ -509,31 +515,37 @@ class Annotation:
         return "⟦%s: %s⟧" % (self.behaviour, self.label)
 
 
+class Source:
+    """What the source files say, read once.
+
+    Four things come out of one read and travel together from there to the
+    gate: the anchored blocks in the order they appear, the prose that landed
+    outside every slot, the annotation manifest, and the advisory warnings.
+    """
+
+    def __init__(self):
+        self.blocks = []
+        self.stray = []
+        self.annotations = []
+        self.warnings = []
+
+
 def parse_source(paths):
-    """Read the source and return the anchored blocks in the order they appear,
-    the prose sitting outside every slot, the annotation manifest, and the
-    advisory warnings.
+    """Read the source into one `Source`.
 
     One file post-promotion, or every section source pre-promotion — the blocks
     concatenate, and the render orders them by the skeleton rather than by the
     order they were read in.
     """
-    blocks = []
-    stray = []
-    annotations = []
-    warnings = []
+    source = Source()
     for path in paths:
-        found, outside, marked, advised = _parse_one_source(path.read_text(), path)
-        blocks.extend(found)
-        stray.extend(outside)
-        annotations.extend(marked)
-        warnings.extend(advised)
-    return blocks, stray, annotations, warnings
+        _read_one_source(source, path.read_text(), path)
+    return source
 
 
-def _parse_one_source(text, path):
-    """One source file: read the annotation channel, strip every comment, and
-    split what is left at the anchors.
+def _read_one_source(source, text, path):
+    """One source file, read into `source`: the annotation channel first, then
+    every comment stripped, then what is left split at the anchors.
 
     Parsing is span-based, never line-anchored: an annotation may wrap across
     any number of lines, and in the corpus this design was calibrated on, 13 of
@@ -547,50 +559,53 @@ def _parse_one_source(text, path):
     # Braces are read off the text with every comment blanked to same-length
     # whitespace, so a reasoning comment's `{{label}}` join key is not itself
     # an annotation and every offset still points at the real source.
+    advisories = []
     masked = _mask_comments(text, fenced)
-    spans = _brace_spans(masked, path, fenced)
+    spans = _brace_spans(masked, path, fenced, advisories)
     bare = _blank_spans(masked, spans)
 
-    blocks = []
-    stray = []
-    annotations = []
-    advisories = []
     keyed = {}
     current = None
     pending = []
     cursor = 0
-    braces = []
 
-    for match in COMMENT.finditer(text):
-        if _inside(fenced, match.start()):
-            continue  # inside a fence it is literal text, not a comment
-        taken = _chunk(spans, cursor, match.start())
-        pending.append(_substitute(text, cursor, match.start(), taken))
-        braces.extend(taken)
-        annotations.extend(_attach(taken, current, masked, bare, advisories))
+    for match in _comment_stops(text, fenced):
+        stop = len(text) if match is None else match.start()
+        taken = _chunk(spans, cursor, stop)
+        pending.append(_substitute(text, cursor, stop, taken))
+        source.annotations.extend(_attach(taken, current, masked, bare, advisories))
+        if match is None:
+            break
         cursor = match.end()
         slot_id = _anchor_slot_id(match, text, path)
         if slot_id is not None:
-            _attribute(_tidy("".join(pending)), current, path, stray)
+            _attribute(_tidy("".join(pending)), current, path, source.stray)
             pending = []
             current = Block(slot_id, path, _line_of(text, match.start()))
-            blocks.append(current)
+            source.blocks.append(current)
             continue
         # Every comment is stripped, as a class. Three of them are then read
         # again for the manifest, and the rest are tracked nowhere.
-        entry = _read_comment(match, text, path, current, keyed)
+        entry = _read_comment(match, text, path, current, keyed, advisories)
         if entry is not None:
-            annotations.append(entry)
+            source.annotations.append(entry)
 
-    taken = _chunk(spans, cursor, len(text))
-    pending.append(_substitute(text, cursor, len(text), taken))
-    braces.extend(taken)
-    annotations.extend(_attach(taken, current, masked, bare, advisories))
-    _attribute(_tidy("".join(pending)), current, path, stray)
+    _attribute(_tidy("".join(pending)), current, path, source.stray)
+    _join_reasoning(spans, keyed, path, advisories)
+    source.warnings.extend(text for _, text in sorted(advisories))
 
-    _join_reasoning(braces, keyed, path, advisories)
-    advisories.sort(key=lambda advisory: advisory[0])
-    return blocks, stray, annotations, [text for _, text in advisories]
+
+def _comment_stops(text, fenced):
+    """Every comment outside a fence, then one stop at end of text.
+
+    The tail of a file is the same case as the run-up to a comment — prose to
+    substitute braces into and attribute to the anchor above — so it takes the
+    same code path rather than a second copy of it.
+    """
+    for match in COMMENT.finditer(text):
+        if not _inside(fenced, match.start()):
+            yield match
+    yield None
 
 
 def _chunk(spans, start, end):
@@ -632,21 +647,21 @@ def _attach(spans, block, masked, bare, advisories):
                         % (annotation.where, annotation.label),
                     )
                 )
-        if len(annotation.label) > LABEL_ADVISORY:
+        if len(annotation.label) > LABEL_ADVISORY_CHARS:
             advisories.append(
                 (
                     annotation.line,
                     "%s: the label runs to %d characters, over the "
                     "%d-character advisory limit — reasoning belongs in a keyed "
                     "comment beside the brace"
-                    % (annotation.where, len(annotation.label), LABEL_ADVISORY),
+                    % (annotation.where, len(annotation.label), LABEL_ADVISORY_CHARS),
                 )
             )
         found.append(annotation)
     return found
 
 
-def _brace_spans(masked, path, fenced):
+def _brace_spans(masked, path, fenced, advisories):
     """Every `{{ … }}` span outside every comment and fence, as one linear walk
     over the `{{` and `}}` tokens.
 
@@ -685,7 +700,9 @@ def _brace_spans(masked, path, fenced):
                 (
                     opened_at,
                     offset + 2,
-                    _brace_annotation(masked, opened_at, offset + 2, path),
+                    _brace_annotation(
+                        masked, opened_at, offset + 2, path, advisories
+                    ),
                 )
             )
             opened_at = None
@@ -696,7 +713,7 @@ def _brace_spans(masked, path, fenced):
     return spans
 
 
-def _brace_annotation(text, start, end, path):
+def _brace_annotation(text, start, end, path, advisories):
     """One brace, read against `{{ [!] [SLOT:] [@owner] <label> }}`.
 
     The three prefixes appear once each, in that order, and a remainder still
@@ -704,54 +721,51 @@ def _brace_annotation(text, start, end, path):
     start with `!` — because that reading would silently lose the gate bit,
     which is the one thing that decides whether a paper can be submitted.
     """
+    line = _line_of(text, start)
     shown = _collapse(text[start + 2 : end - 2])
-    where = "%s:%d" % (path.name, _line_of(text, start))
-    label = shown
-
-    gate = label.startswith("!")
-    if gate:
-        label = label[1:].lstrip()
-
-    behaviour = HOLE
-    if SLOT_INTENT.match(label):
-        mark = SLOT_MARK.match(label)
-        if not mark:
-            raise ParseError(
-                "%s: `{{ %s }}` claims to be a venue slot — the marker is "
-                "`SLOT:`, uppercase, with no space before the colon"
-                % (where, shown)
-            )
-        behaviour = VENUE_SLOT
-        label = label[mark.end() :].lstrip()
-
-    owner = None
-    named = OWNER.match(label)
-    if named:
-        owner = named.group(0)
-        label = label[named.end() :].lstrip()
+    where = _where(path, line)
+    gate, behaviour, owner, label = _split_prefixes(shown)
 
     if not label:
         raise ParseError(
             "%s: `{{ %s }}` names no value — a brace names the missing value, "
             "and its reasoning goes in a keyed comment beside it" % (where, shown)
         )
-    if label.startswith(("!", "@")) or SLOT_INTENT.match(label):
+    if label.startswith(("!", "@")) or SLOT_MARK.match(label):
         raise ParseError(
             "%s: `{{ %s }}` — the `!`, `SLOT:` and `@owner` prefixes appear "
             "once each, in that order" % (where, shown)
         )
-    return Annotation(
-        behaviour, gate, owner, label, path, _line_of(text, start), None
-    )
+    if behaviour is None and SLOT_INTENT.match(label):
+        # Under the grammar a label opening `slot:` is a perfectly good noun
+        # phrase, so this warns rather than refusing: inventing a refusal the
+        # grammar does not ask for breaks a paper that never asked for any of
+        # this. It still says so, because a mistyped marker would otherwise
+        # become a HOLE silently.
+        advisories.append(
+            (
+                line,
+                "%s: `{{ %s }}` reads as a HOLE whose label opens `slot:` — if a "
+                "venue slot was meant, the marker is `SLOT:`, uppercase, with no "
+                "space before the colon" % (where, shown),
+            )
+        )
+    return Annotation(behaviour or HOLE, gate, owner, label, path, line)
 
 
-def _read_comment(match, text, path, block, keyed):
+def _read_comment(match, text, path, block, keyed, advisories):
     """One stripped comment, read again for the manifest.
 
     A comment enters the manifest **if and only if** its first non-space
     character is `!` or `@`. That is what keeps the rung, the objection note
     and the section anchors out of a list of outstanding work sent to a
     co-author: nobody owes a rung.
+
+    **Nothing here refuses.** A parse error is for what the source cannot
+    express *into reader-facing prose*, and a comment never reaches the reader
+    — so a malformed one warns and still enters, where the author will see it.
+    The grammar is also thinner than a brace's: `@owner` is free text, and
+    `SLOT:` marks a brace, so it is left in the label rather than read.
     """
     content = match.group(1).strip()
     line = _line_of(text, match.start())
@@ -766,27 +780,27 @@ def _read_comment(match, text, path, block, keyed):
         return None  # an ordinary author comment: stripped, tracked nowhere
 
     shown = _collapse(content)
-    where = "%s:%d" % (path.name, line)
-    label = shown
-    gate = label.startswith("!")
-    if gate:
-        label = label[1:].lstrip()
-    owner = None
-    named = OWNER.match(label)
-    if named:
-        owner = named.group(0)
-        label = label[named.end() :].lstrip()
+    gate, _, owner, label = _split_prefixes(shown, venue=False)
     if not label:
-        raise ParseError(
-            "%s: `<!-- %s -->` names no value" % (where, shown)
+        # It opened with `!` or `@`, so the rule lists it; there is just
+        # nothing after the prefixes to name what is owed.
+        advisories.append(
+            (
+                line,
+                "%s: `<!-- %s -->` is in the manifest because it opens with a "
+                "prefix, but names nothing after it"
+                % (_where(path, line), shown),
+            )
         )
-    if label.startswith(("!", "@")):
-        raise ParseError(
-            "%s: `<!-- %s -->` — the `!` and `@owner` prefixes appear once "
-            "each, in that order" % (where, shown)
-        )
+        label = shown
     return Annotation(
-        SILENT, gate, owner, label, path, line, None if block is None else block.slot_id
+        SILENT,
+        gate,
+        owner,
+        label,
+        path,
+        line,
+        None if block is None else block.slot_id,
     )
 
 
@@ -846,25 +860,48 @@ def _collapse(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _join_key(label):
-    """A label as a join key: collapsed, and stripped of all three prefixes.
+def _split_prefixes(label, venue=True):
+    """A collapsed label split into `[!] [SLOT:] [@owner] <label>`.
 
-    Tolerant by design. A malformed key inside a comment is not reader-facing,
-    so it warns through `_join_reasoning` rather than refusing the render.
+    One implementation, because the token order is **one fact**: the brace
+    parser, the comment parser and the join key all read it, and this design
+    has twice held that two artifacts recording one fact is how they drift.
+
+    It strips and reports; it refuses nothing — each caller decides what is
+    legal in its own channel. `venue=False` is the comment channel, where
+    `SLOT:` is not part of the grammar and so stays in the label rather than
+    being read off it and lost.
     """
-    key = _collapse(label)
-    if key.startswith("!"):
-        key = key[1:].lstrip()
-    mark = SLOT_MARK.match(key)
+    gate = label.startswith("!")
+    if gate:
+        label = label[1:].lstrip()
+
+    behaviour = None
+    mark = SLOT_MARK.match(label) if venue else None
     if mark:
-        key = key[mark.end() :].lstrip()
-    named = OWNER.match(key)
+        behaviour = VENUE_SLOT
+        label = label[mark.end() :].lstrip()
+
+    owner = None
+    named = OWNER.match(label)
     if named:
-        key = key[named.end() :].lstrip()
-    return key
+        owner = named.group(0)
+        label = label[named.end() :].lstrip()
+
+    return gate, behaviour, owner, label
 
 
-def _direction(masked, start, end):
+def _join_key(label):
+    """A label as a join key: collapsed, and stripped of all three prefixes."""
+    return _split_prefixes(_collapse(label))[3]
+
+
+def _where(path, line):
+    """One source position, spelled the one way every diagnostic spells it."""
+    return "%s:%d" % (path.name, line)
+
+
+def _direction(bare, start, end):
     """The directional word committed in the sentence resting on this hole.
 
     Six of seven gating annotations in the corpus sat under a committed
@@ -873,29 +910,33 @@ def _direction(masked, start, end):
     the direction is named while the hole is still open, on the hole's own
     manifest entry, inheriting the hole's gate bit and adding none.
     """
-    sentence = _sentence_around(masked, start, end)
+    sentence = _sentence_around(bare, start, end)
     found = DIRECTIONAL.search(sentence)
     return found.group(0) if found else None
 
 
-def _sentence_around(masked, start, end):
+def _sentence_around(bare, start, end):
     """The sentence a brace sits in, minus the brace itself — the direction is
-    committed by the claim, never by the label."""
+    committed by the claim, never by the label.
+
+    `bare` is the text with braces blanked as well as comments, so a label's
+    own `!` gate bit cannot read as the end of a sentence.
+    """
     left = 0
-    for match in SENTENCE_END.finditer(masked, 0, start):
+    for match in SENTENCE_END.finditer(bare, 0, start):
         left = match.end()
-    paragraph = masked.rfind("\n\n", 0, start)
+    paragraph = bare.rfind("\n\n", 0, start)
     if paragraph >= 0:
         left = max(left, paragraph + 2)
 
-    right = len(masked)
-    found = SENTENCE_END.search(masked, end)
+    right = len(bare)
+    found = SENTENCE_END.search(bare, end)
     if found:
         right = found.end()
-    paragraph = masked.find("\n\n", end)
+    paragraph = bare.find("\n\n", end)
     if paragraph >= 0:
         right = min(right, paragraph)
-    return masked[left:start] + " " + masked[end:right]
+    return bare[left:start] + " " + bare[end:right]
 
 
 def _block_alone(masked, start, end):
@@ -1244,29 +1285,19 @@ class Paper:
     """One paper at one granularity: the two files, the source, and the slots
     in scope."""
 
-    def __init__(
-        self,
-        skeleton,
-        spine,
-        blocks,
-        stray,
-        annotations,
-        warnings,
-        granularity,
-        unit,
-    ):
+    def __init__(self, skeleton, spine, source, granularity, unit):
         self.skeleton = skeleton
         self.spine = spine
-        self.blocks = blocks
-        self.stray = stray
-        self.annotations = annotations
-        self.warnings = warnings
+        self.blocks = source.blocks
+        self.stray = source.stray
+        self.annotations = source.annotations
+        self.warnings = source.warnings
         self.granularity = granularity
         self.unit = unit
         self.slots = skeleton.subtree(unit) if unit is not None else skeleton.slots
         self.units = [unit] if unit is not None else skeleton.units
         self._prose = {}
-        for block in blocks:
+        for block in self.blocks:
             if block.slot_id in self._prose:
                 # Two anchors claiming one slot is a hard error, and at whole
                 # document granularity nothing is emitted. Keep both blocks'
@@ -1522,10 +1553,10 @@ def main(argv=None):
         paths = source_paths(source)
         skeleton = parse_skeleton(root / "skeleton.md")
         spine = parse_spine(root / "spine.md")
-        blocks, stray, annotations, warnings = parse_source(paths)
+        source = parse_source(paths)
         unit = None
         if granularity == SECTION:
-            unit = derive_unit(skeleton, blocks, args.section)
+            unit = derive_unit(skeleton, source.blocks, args.section)
     except ParseError as error:
         sys.stderr.write("render-paper: parse error — %s\n" % error)
         return EXIT_PARSE
@@ -1533,9 +1564,7 @@ def main(argv=None):
         sys.stderr.write("render-paper: %s\n" % error)
         return EXIT_HARD
 
-    paper = Paper(
-        skeleton, spine, blocks, stray, annotations, warnings, granularity, unit
-    )
+    paper = Paper(skeleton, spine, source, granularity, unit)
     rows, failed = run_gate(paper)
     report = (
         format_report(rows, granularity)

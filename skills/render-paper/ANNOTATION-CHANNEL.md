@@ -175,6 +175,11 @@ bit and adds none: an ungated hole under a directional word gets the line and st
 submission. The word list is short, dumb and conservative, the way the residue lints are, so the
 renderer stays paper-agnostic.
 
+It holds **verbs of change** and the comparatives of quality, and deliberately **not** the bare
+quantifiers — `more`, `less`, `fewer`, `greater`, `smaller`. *"More than 500 cells were counted, of
+which `{{ the flagged count }}` failed"* commits no direction, and the manifest is the artifact that
+gets **sent to a co-author**: a noisy one is a skipped one, which is the same failure one layer up.
+
 ## Creation rights
 
 | unit | may create |
@@ -207,13 +212,37 @@ cannot go stale; and **git is the audit trail** — `git log -S'best-arm Dice'`.
 `RESOLVED` convention died at four uses, which is the empirical basis, and it is why no entry carries
 a history field.
 
+## A load-bearing gap does not hold its ticket open
+
+Every open **gating** gap is spun out as **its own `task` ticket blocking the whole-piece ticket**.
+It gains an owner and tracker visibility without freezing the frontier. `render-paper` owns none of
+that — it emits the manifest the ticket is cut from, and nothing more; the planning unit does the
+cutting.
+
+The concrete case that settled it: a marker-to-round justification needs an **experimentalist**, and
+holding the draft ticket open would block every downstream ticket behind a fact no agent session can
+produce.
+
 ## The tiers
 
 | the source says | tier |
 |---|---|
-| a malformed or unclosed brace, an unmatched `}}`, a brace naming no value, prefixes out of order, a near-miss `SLOT:` | **parse error**, exit `3` |
+| an unclosed brace, an unmatched `}}`, a brace naming no value, a brace whose prefixes are out of order or repeated | **parse error**, exit `3` |
 | an open annotation carrying the gate bit, in any behaviour | **submit-gating**, exit `1` |
-| a label over 80 characters, a bare brace block-alone, a keyed comment matching no brace | **warning**, exit code untouched |
+| a label over 80 characters; a bare brace block-alone; a label opening `slot:`, in case `SLOT:` was meant; a keyed comment matching no brace, or keying one twice; a comment naming nothing after its prefix | **warning**, exit code untouched |
+
+**Only a brace can refuse.** A parse error is for what the source cannot express *into reader-facing
+prose*, and a comment never reaches the reader — so a malformed comment warns and still enters the
+manifest, where the author will see it. The comment grammar is thinner for the same reason: `@owner`
+is free text, so a second `@` is the author's business, and `SLOT:` marks a brace, so in a comment it
+stays part of the label rather than being read off it.
+
+Nor does a brace refuse more than the grammar asks. A label that opens `slot:` **is** a legal noun
+phrase under the grammar, so it renders as the HOLE the grammar says it is and warns instead:
+**a wrong refusal breaks a paper that never asked for any of this.** What a brace does refuse is only
+the shapes the grammar cannot read at all, plus the one shape it could read two ways — prefixes out
+of order, where taking the label at face value would **silently lose the gate bit**, which is the one
+thing that decides whether a paper can be submitted.
 
 **An open annotation never blocks `--circulate`** — it renders as a token and lands in the manifest.
 A malformed brace is a different thing: it is not an open gap the render is declining to gate on, it
