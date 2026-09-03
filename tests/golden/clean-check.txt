@@ -1,8 +1,10 @@
   skeleton / spine grammar        PASS
   source grammar                  PASS
+  brace grammar                   PASS
   slot integrity                  PASS
   unit / rung pairing             PASS
   originating slot children       PASS
+  annotations (gating)            PASS
   unfilled skeleton slot          PASS
   chain bookkeeping               PASS
   debt precedence                 PASS
@@ -13,5 +15,11 @@
   sentence length                 mean 13.7, CV 0.22, 0% over 35 words (6 sentences)
   locality test                   4 units, 6 slots, 2 cross-unit edges (abstract restates results; `D1` introduction→results)
 
-  9 pass, 0 fail, 0 out of scope, 5 reported
+  11 pass, 0 fail, 0 out of scope, 5 reported
   → NOT a claim that this document is finished
+
+  manifest — 1 open annotation, 0 carrying the gate bit
+  → f(source), recomputed at every render; deletion is the only closure
+
+  @author
+       SILENT  MANUSCRIPT.working.md:10  confirm the tool list against the review before submission
