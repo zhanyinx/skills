@@ -1,9 +1,14 @@
-  skeleton / spine grammar  PASS
-  source grammar            PASS
-  slot integrity            PASS
-  unit / rung pairing       PASS
-  originating slot children PASS
-  unfilled skeleton slot    FAIL — 1 (`results`)
+  skeleton / spine grammar        PASS
+  source grammar                  PASS
+  slot integrity                  PASS
+  unit / rung pairing             PASS
+  originating slot children       PASS
+  unfilled skeleton slot          FAIL — 1 (`results`)
+  em dashes (threshold 0)         PASS — 0
+  single-sentence body paragraphs 0 in 0 originating units
+  adversative ratio               0 of 1 sentence (0%)
+  subject openings                The 1 (of 1 sentence)
+  sentence length                 mean 5.0, CV 0.00, 0% over 35 words (1 sentence)
 
-  5 pass, 1 fail, 0 out of scope
+  6 pass, 1 fail, 0 out of scope, 4 reported
   → NOT a claim that this document is finished

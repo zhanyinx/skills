@@ -7,6 +7,19 @@ what a caller can see: the exit code, the emitted document, the verdict report.
 PASS = "PASS"
 SKIPPED = "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
 
+# The verdict column starts here: the report's two-space indent plus the width
+# the row names are padded to.
+VERDICT_COLUMN = 33
+
+
+def rows_of(report):
+    """The verdict table as `{row name: what that row printed}`."""
+    return dict(
+        (line[:VERDICT_COLUMN].strip(), line[VERDICT_COLUMN:].strip())
+        for line in report.splitlines()
+        if line.startswith("  ") and line[2:3] != " "
+    )
+
 
 class TestCheckMode:
     def test_clean_paper_passes_every_check_and_exits_zero(self, render, golden):
@@ -79,21 +92,21 @@ class TestHardErrorTier:
         result = render("duplicate-slot", "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert "slot integrity            FAIL" in result.report
+        assert rows_of(result.report)["slot integrity"].startswith("FAIL")
         assert "anchored twice" in result.report
 
     def test_an_anchor_naming_no_skeleton_slot_is_a_hard_error(self, render):
         result = render("orphan-slot", "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert "slot integrity            FAIL" in result.report
+        assert rows_of(result.report)["slot integrity"].startswith("FAIL")
         assert "absent from the skeleton" in result.report
 
     def test_an_originating_slot_bearing_children_is_a_hard_error(self, render):
         result = render("originating-children", "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert "originating slot children FAIL" in result.report
+        assert rows_of(result.report)["originating slot children"].startswith("FAIL")
         assert "opens a debt and carries 2 children" in result.report
 
     def test_a_hard_error_emits_nothing_under_circulate(self, render):
@@ -171,11 +184,7 @@ class TestSectionGranularity:
     def test_whole_document_rows_are_printed_as_skipped(self, render):
         result = render("clean", "MANUSCRIPT.working.md", "--check", "--section", "methods")
 
-        rows = dict(
-            (line[:27].strip(), line[27:].strip())
-            for line in result.report.splitlines()
-            if line.startswith("  ") and line[2:3] != " "
-        )
+        rows = rows_of(result.report)
 
         assert "slot integrity" in rows
         assert rows["slot integrity"] != PASS
@@ -198,7 +207,7 @@ class TestSectionGranularity:
         result = render("unfilled-slot", "MANUSCRIPT.working.md", "--check", "--section")
 
         assert result.exit_code == 0
-        assert "unfilled skeleton slot    PASS" in result.report
+        assert rows_of(result.report)["unfilled skeleton slot"] == PASS
 
 
 class TestTheCLIContract:
@@ -423,7 +432,7 @@ class TestUnitRungPairing:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert "unit / rung pairing       FAIL" in result.report
+        assert rows_of(result.report)["unit / rung pairing"].startswith("FAIL")
         assert "`results` carries no rung" in result.report
 
     def test_a_rung_naming_something_that_is_not_a_unit_is_a_hard_error(
@@ -472,7 +481,7 @@ class TestParentSlotsBearProseOptionally:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 0
-        assert "unfilled skeleton slot    PASS" in result.report
+        assert rows_of(result.report)["unfilled skeleton slot"] == PASS
 
     def test_and_renders_its_heading_with_no_hole_under_it(self, paper, run_in):
         where = paper("clean")
@@ -507,7 +516,7 @@ class TestAnUnfilledTitle:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 1
-        assert "unfilled skeleton slot    FAIL — 1 (the document title)" in result.report
+        assert rows_of(result.report)["unfilled skeleton slot"] == "FAIL — 1 (the document title)"
 
     def test_and_circulate_marks_it_in_the_h1(self, paper, run_in):
         where = paper("clean")
@@ -562,3 +571,230 @@ class TestNoProseIsEverDroppedSilently:
         assert result.exit_code == 0
         assert "The paper measures one thing." in result.document
         assert "A second block claiming the same slot." in result.document
+
+
+class TestTheReportedTier:
+    """Numbers, never verdicts, and never the exit code.
+
+    The em-dash count is measured against a threshold; the three Tier 4
+    diagnostics carry no threshold at all, because a threshold on a rhetorical
+    move is satisfied by sprinkling `however`.
+    """
+
+    def test_the_table_is_verbatim(self, render, golden):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert result.report == golden("prose-diagnostics-check.txt")
+
+    def test_the_em_dash_row_carries_the_count_the_threshold_and_the_lines(
+        self, render
+    ):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        rows = rows_of(result.report)
+
+        assert "em dashes (threshold 0)" in rows
+        assert rows["em dashes (threshold 0)"] == "FAIL — 3 (lines 4, 18, 23)"
+
+    def test_a_count_over_threshold_leaves_the_exit_code_alone(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+
+    def test_and_submit_still_emits_the_document(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--submit")
+
+        assert result.exit_code == 0
+        assert "refused" not in result.report
+        assert "## Results and discussion" in result.document
+
+    def test_the_count_is_scoped_to_prose(self, render):
+        # The fixture carries seven em dashes and three of them are prose: the
+        # others sit in a comment, a table row, a fence and a citation group,
+        # so an unscoped count would fire on a quoted source title.
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["em dashes (threshold 0)"].endswith(
+            "3 (lines 4, 18, 23)"
+        )
+
+    def test_the_threshold_comes_from_the_caller(self, render):
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--em-dash-threshold",
+            "3",
+        )
+
+        rows = rows_of(result.report)
+
+        assert "em dashes (threshold 3)" in rows
+        assert rows["em dashes (threshold 3)"] == "PASS — 3 (lines 4, 18, 23)"
+
+    def test_a_passing_count_is_still_reported(self, render):
+        # The gate always runs and always reports its count, so raising the bar
+        # cannot make the number invisible.
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--em-dash-threshold",
+            "99",
+        )
+
+        assert "3 (lines 4, 18, 23)" in result.report
+
+    def test_the_skill_level_default_threshold_is_zero(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        assert "em dashes (threshold 0)" in rows_of(result.report)
+
+    def test_an_em_dash_in_a_comment_is_not_prose(self, render):
+        # The clean fixture's first line is a comment carrying an em dash.
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["em dashes (threshold 0)"] == "PASS — 0"
+
+    def test_a_negative_threshold_is_refused(self, render):
+        result = render(
+            "clean", "MANUSCRIPT.working.md", "--check", "--em-dash-threshold", "-1"
+        )
+
+        assert result.exit_code == 2
+        assert "finite non-negative integer" in result.report
+
+    def test_there_is_no_off_no_none_and_no_infinity(self, render):
+        for value in ("off", "none", "inf", "∞", "1.5"):
+            result = render(
+                "clean",
+                "MANUSCRIPT.working.md",
+                "--check",
+                "--em-dash-threshold",
+                value,
+            )
+
+            assert result.exit_code == 2
+            assert "finite non-negative integer" in result.report
+
+    def test_the_em_dash_count_runs_at_section_granularity(self, render):
+        # It blocks the seam in `write-paper`, so it cannot be whole-document
+        # only — the seam is a section.
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--section",
+            "results",
+        )
+
+        assert rows_of(result.report)["em dashes (threshold 0)"] == (
+            "FAIL — 2 (lines 18, 23)"
+        )
+
+    def test_the_tier_four_diagnostics_carry_numbers_and_no_verdict(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        rows = rows_of(result.report)
+
+        for name in ("adversative ratio", "subject openings", "sentence length"):
+            assert name in rows
+            assert PASS not in rows[name]
+            assert "FAIL" not in rows[name]
+            assert SKIPPED not in rows[name]
+
+    def test_the_adversative_ratio_is_a_ratio_over_sentences(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["adversative ratio"] == (
+            "2 of 9 sentences (22%)"
+        )
+
+    def test_the_subject_openings_are_a_distribution(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        openings = rows_of(result.report)["subject openings"]
+
+        assert openings.startswith("The 4")
+        assert "of 9 sentences" in openings
+
+    def test_the_sentence_length_row_carries_mean_cv_and_share_over_35(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        length = rows_of(result.report)["sentence length"]
+
+        assert "mean " in length
+        assert "CV " in length
+        assert "over 35 words" in length
+
+    def test_the_tier_four_rows_are_out_of_scope_at_section_granularity(self, render):
+        # Whole-piece only: a number reported per seam is a number a drafter
+        # tunes at the seam, which is what `no threshold` exists to prevent.
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--section",
+            "results",
+        )
+
+        rows = rows_of(result.report)
+
+        for name in ("adversative ratio", "subject openings", "sentence length"):
+            assert rows[name] == SKIPPED
+
+    def test_single_sentence_body_paragraphs_are_reported(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["single-sentence body paragraphs"] == (
+            "2 in 1 originating unit (lines 8, 10)"
+        )
+
+    def test_they_are_suspended_for_a_non_originating_unit(self, render):
+        # A unit that only closes or restates is not a unit of argument, so
+        # §4a's single-sentence signature does not transfer to it.
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--section",
+            "results",
+        )
+
+        assert rows_of(result.report)["single-sentence body paragraphs"] == (
+            "0 in 0 originating units"
+        )
+
+    def test_no_reported_row_changes_the_exit_code(self, paper, run_in):
+        # Every reported row failing at once, over a paper whose gating and
+        # hard rows all pass.
+        where = paper("prose-diagnostics")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "Registration drift is unaddressed.",
+                "Registration drift — unaddressed — is the gap.",
+            )
+        )
+
+        for mode in ("--check", "--circulate", "--submit"):
+            result = run_in(where, "MANUSCRIPT.working.md", mode)
+
+            assert result.exit_code == 0
+            assert "FAIL" in result.report
+
+    def test_locations_are_file_qualified_over_a_directory_of_sources(
+        self, paper, run_in
+    ):
+        # Pre-promotion the sections are still separate files, where a bare
+        # `line 4` could mean any of them.
+        where = paper("pre-promotion")
+        for name in ("abstract.md", "results.md"):
+            source = where / "drafts" / name
+            source.write_text(source.read_text().replace(", and", " — and"))
+
+        result = run_in(where, "drafts", "--check")
+
+        assert rows_of(result.report)["em dashes (threshold 0)"] == (
+            "FAIL — 2 (abstract.md:4, results.md:4)"
+        )
