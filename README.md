@@ -39,15 +39,21 @@ Draft a piece of academic writing — paper section, chapter, grant, or assay/pr
 
 Review a piece of academic writing since a fixed point along two axes — **Fidelity** (does the text accurately represent its evidence, sources, and literature?) and **Craft** (is the prose clear, non-redundant, correctly hedged?) — plus a direct **cross-reference integrity** check. The two axes run as parallel sub-agents; results are reported side by side.
 
+### assemble-paper
+
+Promote the independently-drafted units into one annotated working manuscript, then make the one editorial pass that reads the whole document end to end. It holds the two jobs nothing else in the pipeline can do: the promotion is one-way, so everything after it is genuinely whole-document work; and the cut it makes — the same fact stated in full in three units — is invisible to a drafting session, which never sees another unit's prose, and unmakeable by a review, which may only write annotations that emit nothing.
+
+Every mechanical duty is absent by design: no concatenation, no headings, no numbering, no spine authority. When it de-duplicates it leaves a callback that **names the proposition and never the section**, so the pass cannot turn repetition into a table of contents in prose.
+
 ### render-paper
 
-Build a paper's document from its `skeleton.md` and run the mechanical gate over it. It injects every heading from the skeleton on every pass, strips the author-facing comment channel by syntax, marks every gap as a conspicuous token, and reports a per-check verdict table in which a check that never looked is a printed row rather than a silent pass. The answer to *"is this paper done"* is an exit code: `--circulate` always emits, `--submit` refuses while any gate bit is open, `--check` runs the gate alone.
+Build a paper's document from its `skeleton.md` and run the mechanical gate over it. It injects every heading from the skeleton on every pass, strips the author-facing comment channel by syntax, marks every gap as a conspicuous token, and reports a per-check verdict table in which a check that never looked is a printed row rather than a silent pass. The answer to *"is this paper done"* is an exit code: `--circulate` always emits, `--submit` refuses while any gate bit is open, `--check` runs the gate alone. A fourth mode, `--scaffold`, writes rather than reads: it seeds one unit's source with every anchor in that unit's subtree, in skeleton order, so a drafting session cannot type a misordered or missing one.
 
 It holds every mechanical duty and no prose judgement, so no two skills can disagree about a mechanical fact. Python 3, standard library only; it ships its own script and the formats of the two files it parses — [`skeleton.md`](skills/render-paper/SKELETON-FORMAT.md) and [`spine.md`](skills/render-paper/SPINE-FORMAT.md).
 
 ## How they fit together
 
-`wayfinder` plans a paper as a map of tickets. Its `draft` tickets call `write-paper` to produce each section, and `review-paper` checks each section at its checkpoint and the whole piece once assembled. `render-paper` is what all three call for anything mechanical: it builds the document and runs the gate, and its exit code is the one refusal authority.
+`wayfinder` plans a paper as a map of tickets. Its `draft` tickets call `write-paper` to produce each section, and `review-paper` checks each section at its checkpoint. Once every draft has closed, `assemble-paper` runs once — it promotes the sections into the working manuscript and makes the whole-document editorial pass — and `review-paper` then runs over the assembled whole. `render-paper` is what all four call for anything mechanical: it builds the document and runs the gate, and its exit code is the one refusal authority.
 
 ## Tests
 
