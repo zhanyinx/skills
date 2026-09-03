@@ -44,7 +44,12 @@ parse error rather than a label that happens to start with `!`, because that rea
 lose the bit that decides whether the paper can be submitted.
 
 Braces rather than brackets: brackets are not recognisable as a class — the calibration corpus held
-40 citation spans against 30 annotation spans, and `{{`/`}}` occurred in it zero times.
+40 citation spans against 30 annotation spans, and `{{`/`}}` occurred in it zero times. The bracket
+now belongs to [the citation surface](CITATIONS.md) alone, and a `[…]` span in prose that is not a
+citation group is a parse error — so the corpus's 30, written in nine improvised syntaxes, are
+things a source **cannot type** rather than things a rule forbids. `[citation needed: <what the
+claim requires>]` is deleted as a form along with them: an unfound citation is a hole with the gate
+bit set, written `{{ ! <what the claim requires> }}`.
 
 ### `HOLE` is the default; `SLOT` is marked
 

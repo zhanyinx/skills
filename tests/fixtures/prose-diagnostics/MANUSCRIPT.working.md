@@ -33,5 +33,5 @@ The configuration is shown, not used:
 stage: 2  # an em dash — inside a fence is not prose
 ```
 
-The bracket span [@drift2020, "Cross-panel drift — a review"] carries an em dash in a quoted
-title, and the count must not fire on that either.
+The citation group [@drift2020; @panel2021] is not prose the diagnostics measure, so the words
+inside it belong to no sentence.
