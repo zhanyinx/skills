@@ -9,7 +9,7 @@
   chain bookkeeping               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   debt precedence                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   em dashes (threshold 0)         PASS — 0
-  brief-to-prose overlap          0 flagged, 2 expected
+  brief-to-prose overlap          1 flagged, 1 expected — availability: "The container image is freely available under the MIT l…"
   single-sentence body paragraphs 0 in 0 originating units
   adversative ratio               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
@@ -19,8 +19,5 @@
   8 pass, 0 fail, 7 out of scope, 2 reported
   → NOT a claim that this section is finished
 
-  manifest — 1 open annotation, 0 carrying the gate bit
+  manifest — no open annotations
   → f(source), recomputed at every render; deletion is the only closure
-
-  @author
-       SILENT  MANUSCRIPT.working.md:10  confirm the tool list against the review before submission

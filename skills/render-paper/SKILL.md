@@ -13,16 +13,40 @@ about a mechanical fact.
 The script is `scripts/render_paper.py`, Python 3, standard library only. It ships inside this skill
 and is consumed only from here.
 
-## The two files it reads
+## The files it reads
 
-Both are declared inputs at the paper root, beside the source:
+All are declared inputs at the paper root, beside the source:
 
 - [`skeleton.md`](SKELETON-FORMAT.md) — the heading tree, its order and levels, the roster, the
   document title and the venue limit.
 - [`spine.md`](SPINE-FORMAT.md) — the claim ladder: the central claim, and one rung per unit.
+- `briefs/<unit>.md` — one brief per unit, read by the overlap instrument.
 
-`render-paper` is their only parser, which is why it documents their formats. **No skill owns either
-file.** A planning ticket creates each; a drafting session may amend its own slot only.
+`render-paper` is the only parser of the first two, which is why it documents their formats. **No
+skill owns either file.** A planning ticket creates each; a drafting session may amend its own slot
+only.
+
+The brief is different: this is its only *parser*, but the drafting skill is the unit that ships its
+two templates, so what this one fixes is **the six zone headings** and nothing else — a full format
+spec here would be a second artifact recording one fact, which is how the two drift. (The templates
+are not built yet; these headings are what they will have to match.)
+
+```
+## Argument              ← reader-facing, an originating unit's propositions
+## Inventory             ← reader-facing, the facts a unit must convey
+## Must not claim
+## Sheds
+## Verify before prose
+## Sources
+```
+
+**Exactly two zones are reader-facing**, and they are the only zones whose content may legitimately
+appear in the prose. Every other zone is instruction by virtue of **where it sits** — positional
+separation, no marker strings. A zone heading this parser does not know is reported in the row, not
+raised: the brief feeds reported rows only, so an unreadable one must not change the exit code.
+
+**An absent brief is a legal state.** Briefs arrive as units are planned, and the row names the units
+that have none rather than counting them as nothing to report.
 
 ## The channel it reads inside the source
 
@@ -167,14 +191,15 @@ failure suppresses the table.
 
 ## The reported tier
 
-Five rows carrying **numbers, never verdicts**, and **never the exit code**. They are the prose facts
+Six rows carrying **numbers, never verdicts**, and **never the exit code**. They are the prose facts
 an author and a review both need. Gating submission is reserved to the annotation gate bit, so a
 number here can be over any bar and `--submit` still emits.
 
 | row | what it reports | threshold |
 |---|---|---|
 | `em dashes (threshold N)` | the count in body prose, and every line it sits on, each named once | **yes**, from the caller |
-| `single-sentence body paragraphs` | the count, and the lines, over originating units only | none |
+| `brief-to-prose overlap` | spans a unit's prose shares verbatim with its brief: how many are flagged, how many expected, and each flagged span quoted | none |
+| `single-sentence body paragraphs` | the count, and the lines, over originating units only — plus **paragraph order** against the brief, which joins this row | none |
 | `adversative ratio` | sentences that mark a turn, over sentences in scope | none |
 | `subject openings` | how the sentences begin, most frequent first; every opening used more than once by name, the rest as a count of openings used once | none |
 | `sentence length` | mean, coefficient of variation, share over 35 words | none |
@@ -207,6 +232,69 @@ blocks a drafting seam and a seam is one section. **Single-sentence body paragra
 are suspended for a unit that only closes or restates a debt — a unit that is not one of argument,
 and a panel caption is not one either, so the single-sentence signature does not transfer. The row
 then prints `0 in 0 originating units`, which says why the number is zero.
+
+**Paragraph order joins that row and takes the same suspension.** It reports how many of a unit's
+paragraphs sit at the position of the brief item they are about — the one-bullet-per-paragraph walk,
+counted — against the unit's **own paragraph count**, never against the item count and never against
+the brief's derived paragraph budget: a draft that walks three items and then writes five more
+paragraphs is not mirroring, a denominator stopping at the items would never look at the five, and a
+budget is a plan where the paragraphs are the fact. It inverts for a non-originating unit exactly as
+the single-sentence count does, because order tracking the brief is what a venue's field order and a
+figure's lettering **mandate** there. Run either on a legend and it fires forever; the finite-verb
+test carries the whole load.
+
+A unit's brief items are the sentences of its reader-facing zone, less the ladder line: `Rung:`,
+`Closes:`, `Opens:` and `Restates:` carry the unit's relation to the rung above it, and a relation is
+bookkeeping rather than something the prose must convey. `## Argument` is read first, so a unit that
+is **both originating and inventory-carrying** is ordered against its propositions, and an
+originating unit whose only reader-facing zone is `## Inventory` is still ordered against its items.
+**Where a brief is absent or unreadable this row stays silent about it**, because the overlap row
+above already names every such unit, and two rows carrying one fact is how the two of them drift.
+
+### The overlap instrument
+
+The row that catches prose mirroring its own brief. A drafting session that walks its brief one
+bullet per paragraph produces a list of labelled blocks rather than a manuscript, and the corpus this
+design was calibrated on shows it happening — the audit's own phrase for what it found is
+*transcribed near-verbatim from the briefs*.
+
+**A shared span is a run of five words or more that a unit's prose and its brief share verbatim**,
+measured inside one sentence of each and never across two: a run bridging a full stop is an
+adjacency, not a phrase anybody moved. Case is ignored when matching, a run of nothing but function
+words is not a phrase, and the match is word-level so a re-wrapped line still matches. The row then
+**quotes the span as the prose wrote it** — what the author has to go and find is the phrase, and
+`Nextflow >= 25.04.0` is not findable as `nextflow 25 04 0`.
+
+**The zone the span came from decides the instrument, not the unit:**
+
+| zone | instrument |
+|---|---|
+| `## Argument` | every shared span is **flagged**. Its propositions are phrased as what the reader must end up accepting, so verbatim overlap with one **is** the defect, and no exemption is needed |
+| `## Inventory` | **the finite-verb test**: a shared span is **expected** unless it predicates. An inventory item is a fact the prose must convey — `MIT`, `ghcr.io/org/tool`, `scale bar required` all reach the prose as themselves — and one that predicates is either the drafter transcribing or the brief author slipping into phrasing, which is how the format enforces itself |
+
+**The finite-verb test is a closed list plus one guarded rule, and deliberately no more.** The closed
+list is the finite forms of *be*, *have*, *do* and the modals, which are closed-class words, so the
+list is complete rather than a sample and needs no per-paper extension — which it must not have. The
+one rule catches a third-person present verb: a word ending in `-s`, not closed off by punctuation,
+not first or last in the span, and not preceded by a determiner, number or preposition. So
+*illumination correction **suppresses** tile-boundary seams* is flagged and *5 DSL2 stages, DAPI as
+common anchor* is not.
+
+`-ed` is deliberately **not** a tell: *scale bar required* is an expected span, and an `-ed` rule
+would flag it. A bare `-s` rule is equally refused — it reads every plural noun as a verb, and an
+instrument that fires forever on a legend is an instrument nobody reads. The residual cost is a
+plural noun that sits mid-span with no punctuation after it and no determiner before it, which can
+read as a verb; the row prints the span, so a reader sees which one it was.
+
+**Both this row and paragraph order are per-unit, so neither is ever out of scope.** `--section`
+narrows them to the one unit; whole-document granularity measures every unit and names each in the
+row.
+
+**Not yet wired: the `## Style` term exemption.** The exemption list for the overlap check is the
+effort map's `## Style` *terms*, and the map is not yet an input to this unit — it arrives with the
+style stanza. Until then a mandated term long enough to be a substantial phrase is reported. The
+exemption covers **terms, never sentences**, which is what keeps the check from being hollowed out by
+its own carve-out.
 
 ### What the numbers are measured over
 
@@ -314,9 +402,11 @@ a word budget all key on, 1:1. *slot* — a section position in the heading tree
 collision:** in the annotation channel, `SLOT:` inside braces marks a *venue back-matter field*. Two
 different concepts, one word; every passage where both could apply qualifies which is meant.
 *originating* / *non-originating* — a unit that opens a debt, versus one that closes, restates or
-inventories. *HOLE* / *SLOT* / *SILENT* — what the reader sees, and the only render-behaviour
-vocabulary there is; *the gate bit* — whether an annotation blocks `--submit`, independent of what
-the reader sees. **There is no kind enum**: the two axes plus the free-text `@owner` carry
+inventories. *argument brief* / *inventory brief* — the two brief formats, one axis: whether the unit
+opens a debt. *proposition* — one item of an argument zone. *shared span* — a run of words a unit's
+prose and its brief have verbatim in common. *HOLE* / *SLOT* / *SILENT* — what the reader sees, and
+the only render-behaviour vocabulary there is; *the gate bit* — whether an annotation blocks
+`--submit`, independent of what the reader sees. **There is no kind enum**: the two axes plus the free-text `@owner` carry
 everything, and `@owner` is the one that makes the manifest sendable.
 
 ## Tests

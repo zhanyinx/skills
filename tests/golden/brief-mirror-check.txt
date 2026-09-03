@@ -1,0 +1,23 @@
+  skeleton / spine grammar        PASS
+  source grammar                  PASS
+  brace grammar                   PASS
+  slot integrity                  PASS
+  unit / rung pairing             PASS
+  originating slot children       PASS
+  annotations (gating)            PASS
+  unfilled skeleton slot          PASS
+  chain bookkeeping               PASS
+  debt precedence                 PASS
+  em dashes (threshold 0)         PASS — 0
+  brief-to-prose overlap          4 flagged, 1 expected — results: "Registration accuracy is credible on a metric VALIS doe…"; results: "Imaging-derived immune quantification tracks two orthog…"; results: "Illumination correction suppresses tile-boundary seams"; availability: "The container image is freely available under the MIT l…"
+  single-sentence body paragraphs 1 in 1 originating unit (line 6); brief-order 3 of 3 (results)
+  adversative ratio               0 of 7 sentences (0%)
+  subject openings                The 4, 3 used once (of 7 sentences)
+  sentence length                 mean 10.1, CV 0.26, 0% over 35 words (7 sentences)
+  locality test                   2 units, 2 slots, 1 cross-unit edge (`D1` results→availability)
+
+  11 pass, 0 fail, 0 out of scope, 6 reported
+  → NOT a claim that this document is finished
+
+  manifest — no open annotations
+  → f(source), recomputed at every render; deletion is the only closure
