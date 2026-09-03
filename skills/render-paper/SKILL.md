@@ -59,6 +59,7 @@ render-paper <source> --submit               emit a submittable one, or refuse
 render-paper <source> --check                run the gate only; emit no document
 render-paper <source> --scaffold             pre-seed one unit's anchors into its source
                       --section [<unit>]     modifier: section granularity
+                      --em-dash-threshold N  modifier: the em-dash bar, default 0
 ```
 
 **There is no default mode.** The caller states which artifact it wants. `<source>` is one file
@@ -92,12 +93,16 @@ The tier answers one question: **would the render emit something false?**
   every slot, a unit and its rung not pairing 1:1, an originating unit bearing children, a citation
   key with no bibliography entry.
 - **Submit-gating** iff the render is faithful but the work is unfinished: an open annotation
-  carrying the gate bit, an unfilled skeleton slot, or an unfilled document title.
+  carrying the gate bit, an unfilled skeleton slot, an unfilled document title, a debt the ladder
+  never closes, a debt closed before it is opened.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
   source, an unclosed comment, a malformed or unclosed brace, a `[…]` span in prose that is not a
   citation group, a malformed `skeleton.md`, `spine.md` or `references.bib`, a declared input that
   is missing. **Only a brace or a bracket can refuse, never a comment** — a parse error is for what
   the source cannot express into *reader-facing* prose, and a comment never reaches the reader.
+- **Reported** iff the fact is worth an author's attention and no exit code: the em-dash count, the
+  prose diagnostics, and the locality test. **A reported row never changes the exit code**, in any
+  mode — see below.
 
 A `warnings` block on stderr sits under all three tiers and moves **no** exit code: a brace label
 over 80 characters, a bare brace standing alone in its own block, a label that opens `slot:` in case
@@ -124,18 +129,26 @@ interface, not formatting.
 ```
 $ render-paper MANUSCRIPT.working.md --check --section methods
 
-  skeleton / spine grammar  PASS
-  source grammar            PASS
-  brace grammar             PASS
-  citation group            PASS
-  slot integrity            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
-  citation → bib entry      SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
-  unit / rung pairing       PASS
-  originating slot children PASS
-  annotations (gating)      PASS
-  unfilled skeleton slot    FAIL — 1 (`methods-imaging`)
+  skeleton / spine grammar        PASS
+  source grammar                  PASS
+  brace grammar                   PASS
+  citation group                  PASS
+  slot integrity                  SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  citation → bib entry            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  unit / rung pairing             PASS
+  originating slot children       PASS
+  annotations (gating)            PASS
+  unfilled skeleton slot          FAIL — 1 (`methods-imaging`)
+  chain bookkeeping               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  debt precedence                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  em dashes (threshold 0)         FAIL — 2 (line 26)
+  single-sentence body paragraphs 0 in 0 originating units
+  adversative ratio               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  7 pass, 1 fail, 2 out of scope
+  6 pass, 2 fail, 9 out of scope, 1 reported
   → NOT a claim that this section is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit
@@ -155,13 +168,78 @@ input to a diff-relative judgement axis. See [the channel](ANNOTATION-CHANNEL.md
   that never looked is a **printed row**, never silently a pass. One word cannot carry the difference
   between checked-and-fine and never-checked, which is why no single-word verdict is emitted anywhere.
 - A `FAIL` carries its count and what failed.
+- **A reported row carries a number instead of a verdict**, and is tallied apart from the three
+  verdicts, because a measurement is not a verdict. The `locality test` row prints
+  `4 units, 6 slots, 2 cross-unit edges (…)` where a gate row prints `PASS`; what to do about the
+  number is judgement the render does not hold. The one exception is the em-dash count, which is
+  measured against a threshold and so takes `PASS` or `FAIL` — and still moves no exit code. Where a
+  reported row is whole-document only, it prints `SKIPPED` like any other out-of-scope row.
 - The table closes with the counts and the line saying it is **not** a claim that the section (or the
   document) is finished. A gate with no FAILs is a statement about mechanism, never about judgement.
+  Every row is counted once, under what it printed, so the counts sum to the rows.
 - **A row is never printed without a check behind it.** The registry grows as the checks are built;
   a row with nothing behind it would read as a pass, which is the defect this table exists to kill.
 
 The parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
 failure suppresses the table.
+
+## The reported tier
+
+Five rows carrying **numbers, never verdicts**, and **never the exit code**. They are the prose facts
+an author and a review both need. Gating submission is reserved to the annotation gate bit, so a
+number here can be over any bar and `--submit` still emits.
+
+| row | what it reports | threshold |
+|---|---|---|
+| `em dashes (threshold N)` | the count in body prose, and every line it sits on, each named once | **yes**, from the caller |
+| `single-sentence body paragraphs` | the count, and the lines, over originating units only | none |
+| `adversative ratio` | sentences that mark a turn, over sentences in scope | none |
+| `subject openings` | how the sentences begin, most frequent first; every opening used more than once by name, the rest as a count of openings used once | none |
+| `sentence length` | mean, coefficient of variation, share over 35 words | none |
+
+**The em-dash count is the one measured against a bar.** An em dash marks a logical relation without
+naming it; the ban failed 98 times as a bullet a drafting session attested to, and it is exactly as
+countable as a figure reference. So it is counted here, and the same count is a **blocking gate at
+the drafting seam** — one implementation, invoked twice. **How to remove one is not this unit's
+business:** that is a drafting invariant, enforced by judgement where the prose is written.
+
+**The threshold is a finite non-negative integer**, supplied by the caller from its `## Style`, and
+the skill default is **0**. There is no `off`, no `none` and no infinity: an effort may raise the bar
+as far as it likes, visibly, and cannot remove the gate. **The count prints on both sides of the
+bar**, so raising it makes the bar visible and never the number invisible.
+
+**The other three are the Tier 4 diagnostics** — the style stanza's fourth tier, *a measured number
+about the prose* — and they are reported together, **with no threshold at all**, by design. An em-dash count is a *ceiling on a
+prohibited token* — zero is honestly achievable and ungameable, since removing a dash forces the
+relation work and doing that work badly still yields an honest count. An adversative count would be
+a *floor on a rhetorical move*, and the cheapest way to clear a floor is to sprinkle `however` over
+paragraphs that concede nothing. **Read the adversative ratio as a consequence, never as a target:**
+it moves because the em-dash gate forces relation-first rewriting. A low ratio beside a ladder full
+of closed debts is the finding; a low ratio alone is not, and a genuinely procedural Methods section
+concedes nothing, correctly.
+
+**The three diagnostics are whole-document only** and print `SKIPPED — OUT OF SCOPE AT THIS
+GRANULARITY` under `--section`: a rhythm number published per seam is a number a drafter tunes at the
+seam, which is what carrying no threshold exists to prevent. **The em-dash count is not**, because it
+blocks a drafting seam and a seam is one section. **Single-sentence body paragraphs run at both**, and
+are suspended for a unit that only closes or restates a debt — a unit that is not one of argument,
+and a panel caption is not one either, so the single-sentence signature does not transfer. The row
+then prints `0 in 0 originating units`, which says why the number is zero.
+
+### What the numbers are measured over
+
+Scope is **defined, not assumed**, or the count fires on text no author wrote as prose. In scope: the
+body prose of every anchored slot at this granularity. Out of scope: HTML comments, annotation
+braces, citation groups (a `[…]` span carrying a citation key), pipe-table rows, and fenced code
+blocks. A bracket span with no key is **prose**: this design reserves `[…]` for citation groups, but
+until that rule is enforced by parse, blanking such a span would shorten the sentence every number
+is measured over. Headings never arrive at
+all — the skeleton owns them and the render injects them. Every excluded span is **blanked rather
+than deleted**, so a reported line number is the author's own line number.
+
+A sentence ends at `.`, `!` or `?` followed by whitespace, unless what precedes it is an abbreviation
+or an initial. A word is a whitespace-delimited token with a letter or a digit in it, so a standalone
+dash is punctuation. A paragraph is a run of non-blank lines.
 
 ## The scaffold
 

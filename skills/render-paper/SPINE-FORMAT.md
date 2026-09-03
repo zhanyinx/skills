@@ -108,6 +108,55 @@ The actual exists because plan-to-output drift is real and silent. A drafting se
 **whole** ladder annotated with actuals, so that it closes a debt against the text that exists rather
 than against what an earlier rung planned to write.
 
+## The chain walk
+
+`render-paper` walks the declared relations and reports the argument's bookkeeping. It is a graph
+query over declared metadata: the four relations here, and the skeleton's order for precedence. It
+never reads the prose, and it **never reads the section type.**
+
+### `chain bookkeeping` — submit-gating
+
+Every declared debt is **opened exactly once, closed exactly once, and none is left dangling at the
+end.** The row fails on:
+
+| the walk finds | the row says |
+|---|---|
+| two rungs opening `D1` | `D1` is opened twice, by R1 and R2 |
+| two rungs closing `D1` | `D1` is closed twice, by R3 and R4 |
+| `D1` opened and no rung closing it | `D1` is opened by R2 and never closed |
+| `closes: D9` where no rung opens `D9` | R4 closes `D9`, which no rung opens |
+| `opens: D1 (closed by R4)` but R3 closes it | `D1` declares R4 closes it, but R3 does |
+| a `closed by` or a `restates` naming no rung | … which is not a rung in this ladder |
+
+Submit-gating rather than a hard error: the render is faithful — the document says what the source
+says — and what is unfinished is the argument. So an unclosed debt still circulates, and `--submit`
+refuses.
+
+### `debt precedence` — submit-gating
+
+> Every debt is opened in a unit **no later than** the unit that closes it.
+
+Read against the **skeleton's** order, which is the document's reading order, because the reader is
+who the rule protects: close a debt before the unit that opens it and the payoff arrives before the
+promise. The ladder's own order is not what this reads — reading order and argument order are
+different relations and may disagree, and the skeleton is authoritative on order.
+
+`restates` carries **no** precedence. An abstract restates a rung the document has not reached yet,
+which is what an abstract is for.
+
+### What the walk does not do
+
+**It never reads the section type.** A Methods unit may carry the paper's load-bearing claim, and a
+walk that expected an introduction to open every debt would false-fail on exactly that paper. Only
+the declared relation decides which rung originates.
+
+**Debts are opened and closed by units.** A rung keys to one unit, so there is no debt edge inside a
+unit and nothing to check inside one; a rung naming a child slot is the `unit / rung pairing` row's
+finding, not this walk's.
+
+**It is the mechanical half only.** Whether prose that *claims* to close a debt actually closes it is
+judgement, and belongs to the review's Fidelity axis.
+
 ## The unit's prose obligation
 
 Closing an inherited debt is obligatory **in prose** — but by naming the proposition, never the

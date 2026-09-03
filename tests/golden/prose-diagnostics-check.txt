@@ -7,15 +7,15 @@
   unit / rung pairing             PASS
   originating slot children       PASS
   annotations (gating)            PASS
-  unfilled skeleton slot          FAIL — 1 (`results`)
+  unfilled skeleton slot          PASS
   chain bookkeeping               PASS
   debt precedence                 PASS
-  em dashes (threshold 0)         PASS — 0
-  single-sentence body paragraphs 0 in 0 originating units
-  adversative ratio               0 of 1 sentence (0%)
-  subject openings                1 used once (of 1 sentence)
-  sentence length                 mean 5.0, CV 0.00, 0% over 35 words (1 sentence)
-  locality test                   2 units, 2 slots, 1 cross-unit edge (abstract restates results)
+  em dashes (threshold 0)         FAIL — 3 (lines 4, 18, 23)
+  single-sentence body paragraphs 2 in 1 originating unit (lines 8, 10)
+  adversative ratio               2 of 9 sentences (22%)
+  subject openings                The 4, 5 used once (of 9 sentences)
+  sentence length                 mean 18.9, CV 0.77, 11% over 35 words (9 sentences)
+  locality test                   3 units, 3 slots, 2 cross-unit edges (abstract restates results; `D1` introduction→results)
 
   12 pass, 1 fail, 0 out of scope, 5 reported
   → NOT a claim that this document is finished

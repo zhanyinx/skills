@@ -323,7 +323,7 @@ class TestTheSubmitRefusal:
     def test_the_open_bits_are_a_printed_row_of_the_verdict_table(self, render):
         result = render("annotations", SOURCE, "--check")
 
-        assert "annotations (gating)      FAIL — 3" in result.report
+        assert "annotations (gating)            FAIL — 3" in result.report
 
 
 class TestSpanBasedParsing:
@@ -516,7 +516,7 @@ class TestTheVerifyFlag:
         result = run_in(where, SOURCE, "--check")
 
         assert "six paired fractions" not in manifest_of(result.report)
-        assert "annotations (gating)      FAIL — 2" in result.report
+        assert "annotations (gating)            FAIL — 2" in result.report
 
 
 class TestTheDirectionalClause:
@@ -766,7 +766,7 @@ class TestSectionGranularity:
         result = render("annotations", SOURCE, "--check", "--section", "back-matter")
 
         assert result.exit_code == 0
-        assert "annotations (gating)      PASS" in result.report
+        assert "annotations (gating)            PASS" in result.report
 
     def test_the_manifest_still_enters_whole(self, render):
         result = render("annotations", SOURCE, "--check", "--section", "back-matter")
