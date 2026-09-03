@@ -47,7 +47,7 @@ Every mechanical duty is absent by design: no concatenation, no headings, no num
 
 ### render-paper
 
-Build a paper's document from its `skeleton.md` and run the mechanical gate over it. It injects every heading from the skeleton on every pass, strips the author-facing comment channel by syntax, marks every gap as a conspicuous token, and reports a per-check verdict table in which a check that never looked is a printed row rather than a silent pass. The answer to *"is this paper done"* is an exit code: `--circulate` always emits, `--submit` refuses while any gate bit is open, `--check` runs the gate alone.
+Build a paper's document from its `skeleton.md` and run the mechanical gate over it. It injects every heading from the skeleton on every pass, strips the author-facing comment channel by syntax, marks every gap as a conspicuous token, and reports a per-check verdict table in which a check that never looked is a printed row rather than a silent pass. The answer to *"is this paper done"* is an exit code: `--circulate` always emits, `--submit` refuses while any gate bit is open, `--check` runs the gate alone. A fourth mode, `--scaffold`, writes rather than reads: it seeds one unit's source with every anchor in that unit's subtree, in skeleton order, so a drafting session cannot type a misordered or missing one.
 
 It holds every mechanical duty and no prose judgement, so no two skills can disagree about a mechanical fact. Python 3, standard library only; it ships its own script and the formats of the two files it parses — [`skeleton.md`](skills/render-paper/SKELETON-FORMAT.md) and [`spine.md`](skills/render-paper/SPINE-FORMAT.md).
 
