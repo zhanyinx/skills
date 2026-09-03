@@ -159,7 +159,9 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   skeleton / spine grammar        PASS
   source grammar                  PASS
   brace grammar                   PASS
+  citation group                  PASS
   slot integrity                  SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  citation → bib entry            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   unit / rung pairing             PASS
   originating slot children       PASS
   annotations (gating)            PASS
@@ -173,7 +175,7 @@ $ render-paper MANUSCRIPT.working.md --check --section methods
   sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
   locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  6 pass, 2 fail, 7 out of scope, 1 reported
+  7 pass, 2 fail, 8 out of scope, 1 reported
   → NOT a claim that this section is finished
 
   manifest — 1 open annotation, 0 carrying the gate bit
