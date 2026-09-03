@@ -45,8 +45,19 @@ appear in the prose. Every other zone is instruction by virtue of **where it sit
 separation, no marker strings. A zone heading this parser does not know is reported in the row, not
 raised: the brief feeds reported rows only, so an unreadable one must not change the exit code.
 
-**An absent brief is a legal state.** Briefs arrive as units are planned, and the row says which
-units have none rather than counting them as nothing to report.
+**An absent brief is a legal state.** Briefs arrive as units are planned, and the row names the units
+that have none rather than counting them as nothing to report.
+
+## The channel it reads inside the source
+
+[The annotation channel](ANNOTATION-CHANNEL.md) — `{{ … }}` **must** appear in the render, an HTML
+comment **must never** — plus the manifest, the gate bit, and the creation-rights grid. Same reason
+the two file formats are documented here: `render-paper` is the channel's only parser.
+
+```
+{{ [!] [SLOT:] [@owner] <label> }}      ! is the gate bit; bare is a HOLE; SLOT: is a venue field
+<!-- !@owner <label> -->                SILENT; in the manifest iff it opens with `!` or `@`
+```
 
 ## Modes
 
@@ -56,6 +67,7 @@ render-paper <source> --submit               emit a submittable one, or refuse
 render-paper <source> --check                run the gate only; emit no document
 render-paper <source> --scaffold             pre-seed one unit's anchors into its source
                       --section [<unit>]     modifier: section granularity
+                      --em-dash-threshold N  modifier: the em-dash bar, default 0
 ```
 
 **There is no default mode.** The caller states which artifact it wants. `<source>` is one file
@@ -87,16 +99,24 @@ The tier answers one question: **would the render emit something false?**
 - **Hard error, both modes** iff the emitted document is not the document the source describes: an
   anchor naming a slot the skeleton does not carry, one slot anchored twice, prose sitting outside
   every slot, a unit and its rung not pairing 1:1, an originating unit bearing children.
-- **Submit-gating** iff the render is faithful but the work is unfinished: an unfilled skeleton slot,
-  or an unfilled document title.
+- **Submit-gating** iff the render is faithful but the work is unfinished: an open annotation
+  carrying the gate bit, an unfilled skeleton slot, an unfilled document title, a debt the ladder
+  never closes, a debt closed before it is opened.
 - **Parse error** iff the source cannot express the thing at all: a malformed anchor, a heading in a
-  source, an unclosed comment, a malformed `skeleton.md` or `spine.md`, or either of those two
-  missing — the render cannot run without them. **A missing brief is not in this tier**: it feeds
-  reported rows only, so its absence is a legal state the row states.
-- **Reported** iff it is a prose fact: brief-to-prose overlap, the finite-verb test, single-sentence
-  body paragraphs and paragraph order. A reported row **cannot fail and never reaches the exit
-  code**, and it carries **no threshold** — turning a prose fact into a floor is what this design
-  refuses, because the judgement axes exist for exactly that.
+  source, an unclosed comment, a malformed or unclosed brace, a malformed `skeleton.md` or
+  `spine.md`, a declared input that is missing. **Only a brace can refuse, never a comment** — a
+  parse error is for what the source cannot express into *reader-facing* prose, and a comment never
+  reaches the reader.
+- **Reported** iff the fact is worth an author's attention and no exit code: the em-dash count, the
+  prose diagnostics, and the locality test. **A reported row never changes the exit code**, in any
+  mode — see below.
+
+A `warnings` block on stderr sits under every tier and moves **no** exit code: a brace label over 80
+characters, a bare brace standing alone in its own block, a label that opens `slot:` in case `SLOT:`
+was meant, and a keyed comment that matches no brace. A hard cap or a refusal on any of them was
+rejected — each over- and under-fires at once, and a wrong refusal breaks a paper that never asked
+for any of this. It is **not** the reported tier: a reported row is a measured fact with a printed
+row of its own, while a warning is advice about one annotation, printed only when there is one.
 
 ### A parse error is not a gate
 
@@ -115,37 +135,181 @@ them looked. What prints instead is one line naming the file, the line and the m
 interface, not formatting.
 
 ```
-$ render-paper MANUSCRIPT.working.md --check --section results
+$ render-paper MANUSCRIPT.working.md --check --section methods
 
-  skeleton / spine grammar  PASS
-  source grammar            PASS
-  slot integrity            SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
-  unit / rung pairing       PASS
-  originating slot children PASS
-  unfilled skeleton slot    FAIL — 1 (`results-accuracy`)
-  brief-to-prose overlap    1 flagged, 1 expected — results: "Registration accuracy is credible on a metr…"
-  paragraphs (originating)  single-sentence 1 (results ¶2); brief-order 3 of 4 (results)
+  skeleton / spine grammar        PASS
+  source grammar                  PASS
+  brace grammar                   PASS
+  slot integrity                  SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  unit / rung pairing             PASS
+  originating slot children       PASS
+  annotations (gating)            PASS
+  unfilled skeleton slot          FAIL — 1 (`methods-imaging`)
+  chain bookkeeping               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  debt precedence                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  em dashes (threshold 0)         FAIL — 2 (line 26)
+  single-sentence body paragraphs 0 in 0 originating units
+  adversative ratio               SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  subject openings                SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  sentence length                 SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
+  locality test                   SKIPPED — OUT OF SCOPE AT THIS GRANULARITY
 
-  4 pass, 1 fail, 1 out of scope, 2 reported
+  6 pass, 2 fail, 7 out of scope, 1 reported
   → NOT a claim that this section is finished
+
+  manifest — 1 open annotation, 0 carrying the gate bit
+  → f(source), recomputed at every render; deletion is the only closure
+
+  @author
+       SLOT    MANUSCRIPT.working.md:50  data availability statement
 ```
+
+**The manifest follows the table under every mode, `--check` included**, and it is printed whether
+or not it is empty — an absent manifest reads as nobody having looked. The **gate** is scoped to the
+granularity the way every row is; the **manifest is not**, because it is `f(source)` and an absolute
+input to a diff-relative judgement axis. See [the channel](ANNOTATION-CHANNEL.md).
 
 - **Row order is the check registry's order and is fixed**, so the table is diffable across runs.
 - **Three verdicts only:** `PASS`, `FAIL`, and `SKIPPED — OUT OF SCOPE AT THIS GRANULARITY`. A check
   that never looked is a **printed row**, never silently a pass. One word cannot carry the difference
   between checked-and-fine and never-checked, which is why no single-word verdict is emitted anywhere.
-- A **reported** row carries no verdict at all — it prints **numbers**. A prose fact has no verdict
-  to give: `PASS` over one would claim the number is fine, which is a judgement this unit does not
-  make, and `FAIL` would be the threshold it refuses. The counts line names them separately for the
-  same reason.
 - A `FAIL` carries its count and what failed.
+- **A reported row carries a number instead of a verdict**, and is tallied apart from the three
+  verdicts, because a measurement is not a verdict. The `locality test` row prints
+  `4 units, 6 slots, 2 cross-unit edges (…)` where a gate row prints `PASS`; what to do about the
+  number is judgement the render does not hold. The one exception is the em-dash count, which is
+  measured against a threshold and so takes `PASS` or `FAIL` — and still moves no exit code. Where a
+  reported row is whole-document only, it prints `SKIPPED` like any other out-of-scope row.
 - The table closes with the counts and the line saying it is **not** a claim that the section (or the
   document) is finished. A gate with no FAILs is a statement about mechanism, never about judgement.
+  Every row is counted once, under what it printed, so the counts sum to the rows.
 - **A row is never printed without a check behind it.** The registry grows as the checks are built;
   a row with nothing behind it would read as a pass, which is the defect this table exists to kill.
 
-The two parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
+The three parse-tier rows are printed as `PASS` whenever a table prints at all, because a parse-tier
 failure suppresses the table.
+
+## The reported tier
+
+Six rows carrying **numbers, never verdicts**, and **never the exit code**. They are the prose facts
+an author and a review both need. Gating submission is reserved to the annotation gate bit, so a
+number here can be over any bar and `--submit` still emits.
+
+| row | what it reports | threshold |
+|---|---|---|
+| `em dashes (threshold N)` | the count in body prose, and every line it sits on, each named once | **yes**, from the caller |
+| `brief-to-prose overlap` | spans a unit's prose shares verbatim with its brief: how many are flagged, how many expected, and each flagged span quoted | none |
+| `single-sentence body paragraphs` | the count, and the lines, over originating units only — plus **paragraph order** against the brief, which joins this row | none |
+| `adversative ratio` | sentences that mark a turn, over sentences in scope | none |
+| `subject openings` | how the sentences begin, most frequent first; every opening used more than once by name, the rest as a count of openings used once | none |
+| `sentence length` | mean, coefficient of variation, share over 35 words | none |
+
+**The em-dash count is the one measured against a bar.** An em dash marks a logical relation without
+naming it; the ban failed 98 times as a bullet a drafting session attested to, and it is exactly as
+countable as a figure reference. So it is counted here, and the same count is a **blocking gate at
+the drafting seam** — one implementation, invoked twice. **How to remove one is not this unit's
+business:** that is a drafting invariant, enforced by judgement where the prose is written.
+
+**The threshold is a finite non-negative integer**, supplied by the caller from its `## Style`, and
+the skill default is **0**. There is no `off`, no `none` and no infinity: an effort may raise the bar
+as far as it likes, visibly, and cannot remove the gate. **The count prints on both sides of the
+bar**, so raising it makes the bar visible and never the number invisible.
+
+**The other three are the Tier 4 diagnostics** — the style stanza's fourth tier, *a measured number
+about the prose* — and they are reported together, **with no threshold at all**, by design. An em-dash count is a *ceiling on a
+prohibited token* — zero is honestly achievable and ungameable, since removing a dash forces the
+relation work and doing that work badly still yields an honest count. An adversative count would be
+a *floor on a rhetorical move*, and the cheapest way to clear a floor is to sprinkle `however` over
+paragraphs that concede nothing. **Read the adversative ratio as a consequence, never as a target:**
+it moves because the em-dash gate forces relation-first rewriting. A low ratio beside a ladder full
+of closed debts is the finding; a low ratio alone is not, and a genuinely procedural Methods section
+concedes nothing, correctly.
+
+**The three diagnostics are whole-document only** and print `SKIPPED — OUT OF SCOPE AT THIS
+GRANULARITY` under `--section`: a rhythm number published per seam is a number a drafter tunes at the
+seam, which is what carrying no threshold exists to prevent. **The em-dash count is not**, because it
+blocks a drafting seam and a seam is one section. **Single-sentence body paragraphs run at both**, and
+are suspended for a unit that only closes or restates a debt — a unit that is not one of argument,
+and a panel caption is not one either, so the single-sentence signature does not transfer. The row
+then prints `0 in 0 originating units`, which says why the number is zero.
+
+**Paragraph order joins that row and takes the same suspension.** It reports how many of a unit's
+paragraphs sit at the position of the brief item they are about — the one-bullet-per-paragraph walk,
+counted — against the unit's **own paragraph count**, never against the item count and never against
+the brief's derived paragraph budget: a draft that walks three items and then writes five more
+paragraphs is not mirroring, a denominator stopping at the items would never look at the five, and a
+budget is a plan where the paragraphs are the fact. It inverts for a non-originating unit exactly as
+the single-sentence count does, because order tracking the brief is what a venue's field order and a
+figure's lettering **mandate** there. Run either on a legend and it fires forever; the finite-verb
+test carries the whole load.
+
+A unit's brief items are the sentences of its reader-facing zone, less the ladder line: `Rung:`,
+`Closes:`, `Opens:` and `Restates:` carry the unit's relation to the rung above it, and a relation is
+bookkeeping rather than something the prose must convey. `## Argument` is read first, so a unit that
+is **both originating and inventory-carrying** is ordered against its propositions, and an
+originating unit whose only reader-facing zone is `## Inventory` is still ordered against its items.
+**Where a brief is absent or unreadable this row stays silent about it**, because the overlap row
+above already names every such unit, and two rows carrying one fact is how the two of them drift.
+
+### The overlap instrument
+
+The row that catches prose mirroring its own brief. A drafting session that walks its brief one
+bullet per paragraph produces a list of labelled blocks rather than a manuscript, and the corpus this
+design was calibrated on shows it happening — the audit's own phrase for what it found is
+*transcribed near-verbatim from the briefs*.
+
+**A shared span is a run of five words or more that a unit's prose and its brief share verbatim**,
+measured inside one sentence of each and never across two: a run bridging a full stop is an
+adjacency, not a phrase anybody moved. Case is ignored when matching, a run of nothing but function
+words is not a phrase, and the match is word-level so a re-wrapped line still matches. The row then
+**quotes the span as the prose wrote it** — what the author has to go and find is the phrase, and
+`Nextflow >= 25.04.0` is not findable as `nextflow 25 04 0`.
+
+**The zone the span came from decides the instrument, not the unit:**
+
+| zone | instrument |
+|---|---|
+| `## Argument` | every shared span is **flagged**. Its propositions are phrased as what the reader must end up accepting, so verbatim overlap with one **is** the defect, and no exemption is needed |
+| `## Inventory` | **the finite-verb test**: a shared span is **expected** unless it predicates. An inventory item is a fact the prose must convey — `MIT`, `ghcr.io/org/tool`, `scale bar required` all reach the prose as themselves — and one that predicates is either the drafter transcribing or the brief author slipping into phrasing, which is how the format enforces itself |
+
+**The finite-verb test is a closed list plus one guarded rule, and deliberately no more.** The closed
+list is the finite forms of *be*, *have*, *do* and the modals, which are closed-class words, so the
+list is complete rather than a sample and needs no per-paper extension — which it must not have. The
+one rule catches a third-person present verb: a word ending in `-s`, not closed off by punctuation,
+not first or last in the span, and not preceded by a determiner, number or preposition. So
+*illumination correction **suppresses** tile-boundary seams* is flagged and *5 DSL2 stages, DAPI as
+common anchor* is not.
+
+`-ed` is deliberately **not** a tell: *scale bar required* is an expected span, and an `-ed` rule
+would flag it. A bare `-s` rule is equally refused — it reads every plural noun as a verb, and an
+instrument that fires forever on a legend is an instrument nobody reads. The residual cost is a
+plural noun that sits mid-span with no punctuation after it and no determiner before it, which can
+read as a verb; the row prints the span, so a reader sees which one it was.
+
+**Both this row and paragraph order are per-unit, so neither is ever out of scope.** `--section`
+narrows them to the one unit; whole-document granularity measures every unit and names each in the
+row.
+
+**Not yet wired: the `## Style` term exemption.** The exemption list for the overlap check is the
+effort map's `## Style` *terms*, and the map is not yet an input to this unit — it arrives with the
+style stanza. Until then a mandated term long enough to be a substantial phrase is reported. The
+exemption covers **terms, never sentences**, which is what keeps the check from being hollowed out by
+its own carve-out.
+
+### What the numbers are measured over
+
+Scope is **defined, not assumed**, or the count fires on text no author wrote as prose. In scope: the
+body prose of every anchored slot at this granularity. Out of scope: HTML comments, annotation
+braces, citation groups (a `[…]` span carrying a citation key), pipe-table rows, and fenced code
+blocks. A bracket span with no key is **prose**: this design reserves `[…]` for citation groups, but
+until that rule is enforced by parse, blanking such a span would shorten the sentence every number
+is measured over. Headings never arrive at
+all — the skeleton owns them and the render injects them. Every excluded span is **blanked rather
+than deleted**, so a reported line number is the author's own line number.
+
+A sentence ends at `.`, `!` or `?` followed by whitespace, unless what precedes it is an abbreviation
+or an initial. A word is a whitespace-delimited token with a letter or a digit in it, so a standalone
+dash is punctuation. A paragraph is a run of non-blank lines.
 
 ## The scaffold
 
@@ -201,94 +365,33 @@ injection, one level down.
    intentions.
 2. **Strip the author-facing comment channel by syntax** — every HTML comment, as a class, never by
    a marker string. Parsing is span-based, never line-anchored: a comment may wrap any number of
-   lines. The renderer emits no comment of its own, so there is no such thing as a comment the render
-   preserves. Inside a fenced code block nothing is parsed at all — not a comment, not an anchor, not
-   a heading — because a source showing anchor syntax in a fence is showing it, not using it.
+   lines, and so may a brace. The renderer emits no comment of its own, so there is no such thing as
+   a comment the render preserves. Inside a fenced code block nothing is parsed at all — not a
+   comment, not a brace, not an anchor, not a heading — because a source showing anchor syntax in a
+   fence is showing it, not using it.
 3. **Concatenate**, pre-promotion only. Post-promotion the source is already one document.
 4. **Mark the output as generated.** Every render opens with a front-matter banner naming the render
    as output. It is not a comment, because a render that emits its own comments is how a comment
    leaks into reader-facing text.
-5. **Never silently strip a gap.** An unfilled slot renders as `⟦HOLE: prose for <slot id>⟧` and an
-   unfilled title as `⟦HOLE: the document title⟧` — a uniform, greppable token. Silently dropping one
-   would turn a flagged gap into an unsupported claim the author never learns about. A **parent** slot
-   is the exception that is not a gap: its own prose is permitted rather than owed, so a parent with
+5. **Never silently strip a gap.** Every gap comes out as one uniform, greppable token, so one grep
+   finds them all: `⟦HOLE: <label>⟧` for a brace and for an unfilled slot or title alike, and
+   `⟦SLOT: <label>⟧` for a venue field. Silently dropping one would turn a flagged gap into an
+   unsupported claim the author never learns about — strip the token and the sentence is
+   ungrammatical, drop the clause and an unsupported assertion ships. A **parent** slot is the
+   exception that is not a gap: its own prose is permitted rather than owed, so a parent with
    children renders its heading and lets the children carry the prose.
-
-## The overlap instrument
-
-The instrument that catches prose mirroring its own brief. A drafting session that walks its brief
-one bullet per paragraph produces a list of labelled blocks rather than a manuscript, and the corpus
-this design was calibrated on shows it happening — the audit's own phrase for what it found is
-*transcribed near-verbatim from the briefs*.
-
-**A shared span is a run of five words or more that a unit's prose and its brief share verbatim**,
-measured inside one sentence of each and never across two: a run bridging a full stop is an
-adjacency, not a phrase anybody moved. Case and punctuation are ignored when matching, a run of
-nothing but function words is not a phrase, and the match is word-level so a re-wrapped line still
-matches. The row then **quotes the span as the prose wrote it** — what the author has to go and find
-is the phrase, and `Nextflow >= 25.04.0` is not findable as `nextflow 25.04.0`.
-
-**The zone the span came from decides the instrument, not the unit:**
-
-| zone | instrument |
-|---|---|
-| `## Argument` | every shared span is **flagged**. Its propositions are phrased as what the reader must end up accepting, so verbatim overlap with one **is** the defect, and no exemption is needed |
-| `## Inventory` | **the finite-verb test**: a shared span is **expected** unless it predicates. An inventory item is a fact the prose must convey — `MIT`, `ghcr.io/org/tool`, `scale bar required` all reach the prose as themselves — and one that predicates is either the drafter transcribing or the brief author slipping into phrasing, which is how the format enforces itself |
-
-**The finite-verb test is a closed list plus one guarded rule, and deliberately no more.** The
-closed list is the finite forms of *be*, *have*, *do* and the modals, which are closed-class words,
-so the list is complete rather than a sample and needs no per-paper extension — which it must not
-have. The one rule catches a third-person present verb: a word ending in `-s`, not closed off by
-punctuation, not first or last in the span, and not preceded by a determiner, number or
-preposition. So *illumination correction **suppresses** tile-boundary seams* is flagged and *5 DSL2
-stages, DAPI as common anchor* is not.
-
-`-ed` is deliberately **not** a tell: *scale bar required* is an expected span, and an `-ed` rule
-would flag it. A bare `-s` rule is equally refused — it reads every plural noun as a verb, and an
-instrument that fires forever on a legend is an instrument nobody reads. The residual cost is a
-plural noun that sits mid-span with no punctuation after it and no determiner before it, which can
-read as a verb; the row prints the span, so a reader sees which one it was.
-
-**Not yet wired: the `## Style` term exemption.** The exemption list for the overlap check is the
-effort map's `## Style` *terms*, and the map is not yet an input to this unit — it arrives with the
-style stanza. Until then a mandated term long enough to be a substantial phrase is reported. The
-exemption covers **terms, never sentences**, which is what keeps the check from being hollowed out
-by its own carve-out.
-
-## Paragraph shape — originating units only
-
-Two structural measures, both reported, both **suspended for a non-originating unit**:
-
-- **single-sentence body paragraphs**, attributed to their unit and their position in it;
-- **paragraph order** against the brief's item order — how many paragraphs sit at the position of
-  the brief item they are about, which is the one-bullet-per-paragraph walk, counted. It is reported
-  against the unit's **own paragraph count** — never against the item count, and never against the
-  brief's derived paragraph budget: a draft that walks three items and then writes five more
-  paragraphs is not mirroring, a denominator stopping at the items would never look at the five, and
-  a budget is a plan where the paragraphs are the fact.
-
-Both invert for a non-originating unit, which is why neither runs there. Order tracking the brief is
-what a venue's field order and a figure's lettering **mandate**, so it is the requirement rather
-than the defect; and a panel caption is not a unit of argument, so a one-sentence paragraph is its
-normal shape. Run either on a legend and it fires forever. There the finite-verb test carries the
-whole load.
-
-A unit's brief items are the sentences of its reader-facing zone, less the ladder line: `Rung:`,
-`Closes:`, `Opens:` and `Restates:` carry the unit's relation to the rung above it, and a relation
-is bookkeeping rather than something the prose must convey. `## Argument` is read first, so a unit
-that is **both originating and inventory-carrying** is ordered against its propositions and an
-originating unit whose only reader-facing zone is `## Inventory` is still ordered against its
-items.
-
-**Both rows are per-unit, so neither is ever out of scope.** `--section` narrows them to the one
-unit; whole-document granularity measures every unit and names each in the row.
+6. **Emit the manifest.** Every open annotation, grouped by `@owner` so it is sendable, recomputed
+   from the source on every render so it cannot go stale.
 
 ## What it must not do
 
 - Hold any paper-specific text. No bibliography, no section names, no per-paper fixes. Every
   judgement fix is written back into the **source**, never encoded in the generator: a fix that lives
   in the generator regresses the moment the generator stops being run.
-- Create any annotation **in the source**. It renders a gap as a token; it never writes one.
+- Create any annotation **in the source**. It renders a gap as a token; it never writes one. The
+  creation-rights grid is in [the channel](ANNOTATION-CHANNEL.md): `write-paper` may create all
+  three behaviours, `review-paper` may create `SILENT` only, and the render and the assembler create
+  none.
 - Hold any spine authority beyond the mechanical bookkeeping walk.
 - Judge anything. Every check is decidable by parse; anything else belongs to a judgement axis.
 
@@ -299,9 +402,12 @@ a word budget all key on, 1:1. *slot* — a section position in the heading tree
 collision:** in the annotation channel, `SLOT:` inside braces marks a *venue back-matter field*. Two
 different concepts, one word; every passage where both could apply qualifies which is meant.
 *originating* / *non-originating* — a unit that opens a debt, versus one that closes, restates or
-inventories. *argument brief* / *inventory brief* — the two brief formats, one axis: whether the
-unit opens a debt. *proposition* — one item of an argument zone. *shared span* — a run of words a
-unit's prose and its brief have verbatim in common.
+inventories. *argument brief* / *inventory brief* — the two brief formats, one axis: whether the unit
+opens a debt. *proposition* — one item of an argument zone. *shared span* — a run of words a unit's
+prose and its brief have verbatim in common. *HOLE* / *SLOT* / *SILENT* — what the reader sees, and
+the only render-behaviour vocabulary there is; *the gate bit* — whether an annotation blocks
+`--submit`, independent of what the reader sees. **There is no kind enum**: the two axes plus the free-text `@owner` carry
+everything, and `@owner` is the one that makes the manifest sendable.
 
 ## Tests
 

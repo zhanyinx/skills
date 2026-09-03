@@ -14,7 +14,8 @@ Exit codes are the contract every other unit reads:
     2   at least one hard error, or the renderer cannot run
     3   a parse error — nothing ran, so no table is printed
 
-See `SKILL.md`, `SKELETON-FORMAT.md` and `SPINE-FORMAT.md` beside this script.
+See `SKILL.md`, `SKELETON-FORMAT.md`, `SPINE-FORMAT.md` and `ANNOTATION-CHANNEL.md`
+beside this script.
 """
 
 from __future__ import annotations
@@ -32,10 +33,9 @@ EXIT_PARSE = 3
 # Check tiers. The tier answers one question: would the render emit something
 # false? Hard iff the emitted document is not the document the source
 # describes; gating iff the render is faithful but the work is unfinished;
-# parse iff the source cannot express the thing at all; reported iff it is a
-# prose fact, which is decidable but carries no consequence — a threshold on
-# one is exactly what this design refuses, so a reported row cannot fail and
-# never reaches the exit code.
+# parse iff the source cannot express the thing at all. Reported iff the fact
+# is worth an author's attention and no exit code: a reported row is a
+# measurement, and gating submission is reserved to the annotation gate bit.
 HARD = "hard"
 GATING = "gating"
 REPORTED = "reported"
@@ -46,10 +46,24 @@ PASS = "PASS"
 FAIL = "FAIL"
 SKIPPED = "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
 
+# A fourth outcome, which is not a verdict at all: the row prints a number.
+NUMBER = "number"
+
 DOCUMENT = "document"
 SECTION = "section"
 
-NAME_WIDTH = 26
+# The annotation channel's two axes, and nothing else. There is no kind enum:
+# render behaviour is one axis, the gate bit is the other, and the one
+# dimension they do not carry — who resolves it — is the free-text `@owner`.
+HOLE = "HOLE"
+VENUE_SLOT = "SLOT"  # `SLOT:` inside braces is a venue field, never a section
+SILENT = "SILENT"
+
+DEFAULT_OWNER = "@author"
+LABEL_ADVISORY_CHARS = 80
+
+NAME_WIDTH = 32
+BEHAVIOUR_WIDTH = 6
 INDENT = "  "
 
 SLOT_ID = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
@@ -65,6 +79,60 @@ RUNG_FIELD = re.compile(r"^-\s+([a-z-]+)\s*:\s*(.*?)\s*$")
 OPENS_VALUE = re.compile(r"^(D\d+)\s+\(closed by (R\d+)\)\s+—\s+(\S.*)$")
 DEBT_ID = re.compile(r"^D\d+$")
 RUNG_ID = re.compile(r"^R\d+$")
+
+BRACE_OPEN = re.compile(r"\{\{")
+BRACE_CLOSE = re.compile(r"\}\}")
+SLOT_INTENT = re.compile(r"^slot\s*:", re.IGNORECASE)
+SLOT_MARK = re.compile(r"^SLOT:")
+OWNER = re.compile(r"^@\S+")
+REASONING_KEY = re.compile(r"^\{\{(.*?)\}\}\s*:(.*)$", re.DOTALL)
+
+# The directional-word list is short, dumb and conservative, the way the other
+# residue lints are, so the renderer stays paper-agnostic. It buys one manifest
+# line, never a gate of its own: the direction inherits the hole's bit.
+#
+# Verbs of change, plus the comparatives of quality that commit a direction
+# about the missing value itself. The bare quantifiers — `more`, `less`,
+# `fewer`, `greater`, `smaller` — are deliberately absent: "more than 500 cells
+# were counted, of which {{ the flagged count }} failed" commits no direction,
+# and the manifest is the artifact that gets sent to a co-author, so a noisy
+# one is a skipped one.
+DIRECTIONAL = re.compile(
+    r"\b("
+    r"raise[sd]?|raising|lower(?:s|ed|ing)?|rise[sn]?|rose|fell|fall(?:s|en)?|"
+    r"increase[sd]?|increasing|decrease[sd]?|decreasing|improve[sd]?|improving|"
+    r"reduce[sd]?|reducing|gain(?:s|ed)?|drop(?:s|ped)?|exceed(?:s|ed)?|"
+    r"outperform(?:s|ed)?|higher|better|worse|faster|slower|stronger|weaker"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# What the prose diagnostics read, and what they refuse to read. Scope is
+# defined rather than assumed: a count that walks over a table row or a quoted
+# source title fires on text no author wrote as prose.
+EM_DASH = "—"
+TABLE_ROW = re.compile(r"^ {0,3}\|.*$", re.MULTILINE)
+# A `[…]` span carrying a citation key. The format reserves every bracket span
+# for a citation group, but this pattern asks for the key anyway: until that
+# rule is enforced by parse, a span with no key is prose, and blanking prose
+# would quietly shorten the sentence every number is measured over.
+CITATION_GROUP = re.compile(r"\[[^\[\]]*@[^\[\]]*\]")
+BRACE_SPAN = re.compile(r"\{[^{}]*\}")
+
+# Sentence splitting is mechanical and conservative: a terminator followed by
+# whitespace, unless what precedes it is an abbreviation or an initial. The
+# list holds nothing that is also a word a sentence can end on — `no.` is left
+# out for that reason, because merging two sentences corrupts every number
+# measured over them, and `no.` for `number` is rare in body prose.
+SENTENCE_END = re.compile(r"[.!?][\"'’”)\]]*(?=\s|$)")
+ABBREVIATION = re.compile(
+    r"(?:\b(?:et al|e\.g|i\.e|cf|vs|Fig|Figs|Eq|Ref|approx|ca|Dr|Prof|Mr|Mrs|Ms|St)\.|"
+    r"\b[A-Z]\.)$"
+)
+
+# A word is a whitespace-delimited token with a letter or digit in it, so a
+# standalone dash is punctuation rather than a word.
+WORD = re.compile(r"[^\W_]+(?:['’\-][^\W_]+)*")
 
 # The brief's six zone headings, of which exactly two are reader-facing — the
 # only zones whose content may legitimately appear in the prose.
@@ -83,15 +151,9 @@ BRIEF_ZONES = READER_FACING_ZONES + (
 # a relation, not lifting a claim.
 RELATION_LINE = re.compile(r"^(rung|closes|opens|restates)\s*:", re.IGNORECASE)
 
-# A word, keeping what a term keeps: internal hyphens, dots and slashes, so
-# `tile-boundary`, `ghcr.io/org/tool` and a version's `25.04.0` tokenise as
-# themselves. An operator like `≥` is not a word and does not become one — the
-# span is quoted from the prose, so the reader still sees it.
-TOKEN = re.compile(r"[a-z0-9][a-z0-9'’./+<>=-]*")
-TRAILING = "'’./-"
+# The punctuation that closes a word off, which is what separates an inventory
+# item's final plural noun from a predication's verb.
 CLOSING = ",;:.!?)]\"”"
-SENTENCE_END = re.compile(r"(?<=[.!?])[\"”)]?\s+")
-ABBREVIATION = re.compile(r"(^|\s)(e\.g|i\.e|cf|vs|fig|eq|al|ca|approx|ref)\.$", re.I)
 
 # A shared run this long is a phrase somebody moved, not a coincidence of
 # grammar. The corpus's own shortest transcribed span — *illumination
@@ -137,6 +199,26 @@ NOT_A_SUBJECT = {
     "for", "from", "to", "with", "into", "over", "under", "per", "against",
     "across", "and", "or", "plus", "versus", "vs",
 }
+
+# The connectives that mark a turn. The list is deliberately short and dumb:
+# the number it produces is read as a consequence of the em-dash gate forcing
+# relation-first rewriting, never as a target to be hit.
+# `while` is deliberately absent: in scientific prose it is usually temporal
+# ("while the samples incubated"), and this number carries no threshold, so an
+# inflated one is a false signal to the reader in the way a spurious `however`
+# is. The count errs toward under-reporting.
+ADVERSATIVE = re.compile(
+    r"\b(?:however|but|yet|although|though|whereas|nevertheless|nonetheless|"
+    r"conversely|despite|even so|by contrast|in contrast|in spite of)\b",
+    re.IGNORECASE,
+)
+
+LONG_SENTENCE = 35
+
+# The skill-level default threshold. Zero is honestly achievable and
+# ungameable: removing a dash forces the relation work, and doing that work
+# badly still yields an honest count.
+EM_DASH_DEFAULT = 0
 
 BANNER = (
     "---\n"
@@ -231,6 +313,12 @@ class Spine:
     def rung_for(self, unit_id):
         for rung in self.rungs:
             if rung.unit == unit_id:
+                return rung
+        return None
+
+    def by_id(self, rung_id):
+        for rung in self.rungs:
+            if rung.id == rung_id:
                 return rung
         return None
 
@@ -519,41 +607,95 @@ class Block:
         self.origin = origin
         self.line = line
         self.prose = ""
+        # The same prose as the source still holds it, comments blanked rather
+        # than closed up, and the line it starts on. A diagnostic reporting
+        # `line 22` has to mean the author's line 22, so the text it scans
+        # keeps every newline the source had.
+        self.raw = ""
+        self.raw_line = line
+        self.raw_start = 0
+
+
+class Annotation:
+    """One author-facing annotation, on both axes at once.
+
+    `behaviour` decides what the reader sees — a `HOLE` renders as a
+    conspicuous token, a `VENUE_SLOT` as a visible placeholder, a `SILENT` as
+    nothing at all. `gate` decides whether it blocks `--submit`. The two are
+    independent, which is what lets a verify flag be SILENT and still refuse a
+    submission.
+    """
+
+    def __init__(self, behaviour, gate, owner, label, origin, line, slot_id=None):
+        self.behaviour = behaviour
+        self.gate = gate
+        self.owner = owner or DEFAULT_OWNER
+        self.label = label
+        self.origin = origin
+        self.line = line
+        self.slot_id = slot_id
+        self.reasoning = None
+        self.direction = None
+
+    @property
+    def where(self):
+        return _where(self.origin, self.line)
+
+    @property
+    def token(self):
+        """What the reader sees. Uniform across both brace behaviours, so one
+        grep finds every gap in a circulated paper."""
+        return "⟦%s: %s⟧" % (self.behaviour, self.label)
+
+
+class Source:
+    """What the source files say, read once.
+
+    Four things come out of one read and travel together from there to the
+    gate: the anchored blocks in the order they appear, the prose that landed
+    outside every slot, the annotation manifest, and the advisory warnings.
+    """
+
+    def __init__(self):
+        self.blocks = []
+        self.stray = []
+        self.annotations = []
+        self.warnings = []
 
 
 def parse_source(paths):
-    """Read the source and return the anchored blocks in the order they appear,
-    plus any prose sitting outside every slot.
+    """Read the source into one `Source`.
 
     One file post-promotion, or every section source pre-promotion — the blocks
     concatenate, and the render orders them by the skeleton rather than by the
     order they were read in.
     """
-    blocks = []
-    stray = []
+    source = Source()
     for path in paths:
-        found, outside = _parse_one_source(path.read_text(), path)
-        blocks.extend(found)
-        stray.extend(outside)
-    return blocks, stray
+        _read_one_source(source, path.read_text(), path)
+    return source
 
 
 def scan_source(text, path):
     """Every comment in a source, in order, each paired with the slot it
-    anchors — or with `None` when it is an ordinary comment.
+    anchors — or with `None` when it is an ordinary comment — plus the fenced
+    spans the scan skipped.
 
     Both readers of a source walk this one scan: the render's parser, which
     strips the channel, and the scaffold's split, which keeps it. A grammar
-    with two implementations is a grammar that can disagree with itself.
+    with two implementations is a grammar that can disagree with itself. The
+    fenced spans come back with it because the render's parser reads the brace
+    channel off the same text, and it must skip exactly what this scan skipped.
 
-    Parsing is span-based, never line-anchored: a comment may wrap across any
-    number of lines, and in the corpus this design was calibrated on, 13 of 30
-    annotations did.
+    Parsing is span-based, never line-anchored: an annotation may wrap across
+    any number of lines, and in the corpus this design was calibrated on, 13 of
+    30 did, one of them over six lines. A line-anchored parser is the thing an
+    implementer assumes away.
     """
     fenced = _fenced_spans(text)
     _refuse_unclosed_comment(text, path, fenced)
     _refuse_headings(text, path, fenced)
-    return [
+    return fenced, [
         (match, _anchor_slot_id(match, text, path))
         for match in COMMENT.finditer(text)
         # inside a fence it is literal text, not a comment
@@ -561,28 +703,402 @@ def scan_source(text, path):
     ]
 
 
-def _parse_one_source(text, path):
-    """One source file: strip the author-facing comment channel, and split what
-    is left at the anchors."""
-    blocks = []
-    stray = []
+def _read_one_source(source, text, path):
+    """One source file, read into `source`: the annotation channel first, then
+    every comment stripped, then what is left split at the anchors."""
+    fenced, comments = scan_source(text, path)
+
+    # Braces are read off the text with every comment blanked to same-length
+    # whitespace, so a reasoning comment's `{{label}}` join key is not itself
+    # an annotation and every offset still points at the real source. The
+    # prose diagnostics read that same text back through `Block.raw`, which is
+    # why the blanking keeps every newline the source had.
+    advisories = []
+    masked = _mask_comments(text, fenced)
+    spans = _brace_spans(masked, path, fenced, advisories)
+    bare = _without_braces(masked, spans)
+
+    keyed = {}
     current = None
     pending = []
     cursor = 0
 
-    for match, slot_id in scan_source(text, path):
-        pending.append(text[cursor : match.start()])
+    # The trailing `(None, None)` is end of text. A file's tail is the same
+    # case as the run-up to a comment — prose to substitute braces into and
+    # attribute to the anchor above — so it takes the same code path rather
+    # than a second copy of it.
+    for match, slot_id in comments + [(None, None)]:
+        stop = len(text) if match is None else match.start()
+        taken = _chunk(spans, cursor, stop)
+        pending.append(_substitute(text, cursor, stop, taken))
+        source.annotations.extend(_attach(taken, current, masked, bare, advisories))
+        if match is None:
+            break
         cursor = match.end()
-        if slot_id is None:
-            continue  # every comment is stripped, as a class
-        _attribute(_tidy("".join(pending)), current, path, stray)
-        pending = []
-        current = Block(slot_id, path, _line_of(text, match.start()))
-        blocks.append(current)
+        if slot_id is not None:
+            _attribute(_tidy("".join(pending)), current, path, source.stray)
+            _close_raw(current, masked, match.start())
+            pending = []
+            current = Block(slot_id, path, _line_of(text, match.start()))
+            current.raw_line = _line_of(text, match.end())
+            current.raw_start = match.end()
+            source.blocks.append(current)
+            continue
+        # Every comment is stripped, as a class. Three of them are then read
+        # again for the manifest, and the rest are tracked nowhere.
+        entry = _read_comment(match, text, path, current, keyed, advisories)
+        if entry is not None:
+            source.annotations.append(entry)
 
-    pending.append(text[cursor:])
-    _attribute(_tidy("".join(pending)), current, path, stray)
-    return blocks, stray
+    _attribute(_tidy("".join(pending)), current, path, source.stray)
+    _close_raw(current, masked, len(text))
+    _join_reasoning(spans, keyed, path, advisories)
+    source.warnings.extend(text for _, text in sorted(advisories))
+
+
+def _chunk(spans, start, end):
+    """The brace spans lying in `[start, end)`, in source order."""
+    return [span for span in spans if start <= span[0] < end]
+
+
+def _substitute(text, start, end, spans):
+    """The prose of one chunk, with every brace replaced by its render token.
+
+    A HOLE and a SLOT both come out as a token; nothing is ever dropped,
+    because stripping a gap silently converts a flagged hole into an
+    unsupported claim the author never learns about.
+    """
+    out = []
+    cursor = start
+    for span_start, span_end, annotation in spans:
+        out.append(text[cursor:span_start])
+        out.append(annotation.token)
+        cursor = span_end
+    out.append(text[cursor:end])
+    return "".join(out)
+
+
+def _attach(spans, block, masked, bare, advisories):
+    """Give each brace in a chunk the slot it sits under, and run the two
+    advisory lints over it."""
+    found = []
+    for span_start, span_end, annotation in spans:
+        annotation.slot_id = None if block is None else block.slot_id
+        if annotation.behaviour == HOLE:
+            annotation.direction = _direction(bare, span_start, span_end)
+            if _block_alone(masked, span_start, span_end):
+                advisories.append(
+                    (
+                        annotation.line,
+                        "%s: the bare brace `{{ %s }}` stands alone in its own "
+                        "block, so it is probably a `SLOT:`"
+                        % (annotation.where, annotation.label),
+                    )
+                )
+        if len(annotation.label) > LABEL_ADVISORY_CHARS:
+            advisories.append(
+                (
+                    annotation.line,
+                    "%s: the label runs to %d characters, over the "
+                    "%d-character advisory limit — reasoning belongs in a keyed "
+                    "comment beside the brace"
+                    % (annotation.where, len(annotation.label), LABEL_ADVISORY_CHARS),
+                )
+            )
+        found.append(annotation)
+    return found
+
+
+def _brace_spans(masked, path, fenced, advisories):
+    """Every `{{ … }}` span outside every comment and fence, as one linear walk
+    over the `{{` and `}}` tokens.
+
+    The walk, rather than a regex, is what lets an unclosed brace name the
+    brace that never closed instead of the next one along. A malformed brace is
+    a parse error and not a gate: it has no behaviour and no gate bit to
+    honour, so it sits in the same category as an unclosed comment.
+    """
+    tokens = [
+        (match.start(), True)
+        for match in BRACE_OPEN.finditer(masked)
+        if not _inside(fenced, match.start())
+    ]
+    tokens += [
+        (match.start(), False)
+        for match in BRACE_CLOSE.finditer(masked)
+        if not _inside(fenced, match.start())
+    ]
+    tokens.sort()
+
+    spans = []
+    opened_at = None
+    for offset, opening in tokens:
+        if opening and opened_at is not None:
+            raise ParseError(
+                "%s:%d: unclosed brace `{{`" % (path.name, _line_of(masked, opened_at))
+            )
+        if opening:
+            opened_at = offset
+        elif opened_at is None:
+            raise ParseError(
+                "%s:%d: unmatched `}}`" % (path.name, _line_of(masked, offset))
+            )
+        else:
+            spans.append(
+                (
+                    opened_at,
+                    offset + 2,
+                    _brace_annotation(
+                        masked, opened_at, offset + 2, path, advisories
+                    ),
+                )
+            )
+            opened_at = None
+    if opened_at is not None:
+        raise ParseError(
+            "%s:%d: unclosed brace `{{`" % (path.name, _line_of(masked, opened_at))
+        )
+    return spans
+
+
+def _brace_annotation(text, start, end, path, advisories):
+    """One brace, read against `{{ [!] [SLOT:] [@owner] <label> }}`.
+
+    The three prefixes appear once each, in that order, and a remainder still
+    carrying one of them is a parse error rather than a label that happens to
+    start with `!` — because that reading would silently lose the gate bit,
+    which is the one thing that decides whether a paper can be submitted.
+    """
+    line = _line_of(text, start)
+    shown = _collapse(text[start + 2 : end - 2])
+    where = _where(path, line)
+    gate, behaviour, owner, label = _split_prefixes(shown)
+
+    if not label:
+        raise ParseError(
+            "%s: `{{ %s }}` names no value — a brace names the missing value, "
+            "and its reasoning goes in a keyed comment beside it" % (where, shown)
+        )
+    if label.startswith(("!", "@")) or SLOT_MARK.match(label):
+        raise ParseError(
+            "%s: `{{ %s }}` — the `!`, `SLOT:` and `@owner` prefixes appear "
+            "once each, in that order" % (where, shown)
+        )
+    if behaviour is None and SLOT_INTENT.match(label):
+        # Under the grammar a label opening `slot:` is a perfectly good noun
+        # phrase, so this warns rather than refusing: inventing a refusal the
+        # grammar does not ask for breaks a paper that never asked for any of
+        # this. It still says so, because a mistyped marker would otherwise
+        # become a HOLE silently.
+        advisories.append(
+            (
+                line,
+                "%s: `{{ %s }}` reads as a HOLE whose label opens `slot:` — if a "
+                "venue slot was meant, the marker is `SLOT:`, uppercase, with no "
+                "space before the colon" % (where, shown),
+            )
+        )
+    return Annotation(behaviour or HOLE, gate, owner, label, path, line)
+
+
+def _read_comment(match, text, path, block, keyed, advisories):
+    """One stripped comment, read again for the manifest.
+
+    A comment enters the manifest **if and only if** its first non-space
+    character is `!` or `@`. That is what keeps the rung, the objection note
+    and the section anchors out of a list of outstanding work sent to a
+    co-author: nobody owes a rung.
+
+    **Nothing here refuses.** A parse error is for what the source cannot
+    express *into reader-facing prose*, and a comment never reaches the reader
+    — so a malformed one warns and still enters, where the author will see it.
+    The grammar is also thinner than a brace's: `@owner` is free text, and
+    `SLOT:` marks a brace, so it is left in the label rather than read.
+    """
+    content = match.group(1).strip()
+    line = _line_of(text, match.start())
+
+    reasoning = REASONING_KEY.match(content)
+    if reasoning:
+        keyed.setdefault(_join_key(reasoning.group(1)), []).append(
+            (_collapse(reasoning.group(2)), line)
+        )
+        return None
+    if not content.startswith(("!", "@")):
+        return None  # an ordinary author comment: stripped, tracked nowhere
+
+    shown = _collapse(content)
+    gate, _, owner, label = _split_prefixes(shown, venue=False)
+    if not label:
+        # It opened with `!` or `@`, so the rule lists it; there is just
+        # nothing after the prefixes to name what is owed.
+        advisories.append(
+            (
+                line,
+                "%s: `<!-- %s -->` is in the manifest because it opens with a "
+                "prefix, but names nothing after it"
+                % (_where(path, line), shown),
+            )
+        )
+        label = shown
+    return Annotation(
+        SILENT,
+        gate,
+        owner,
+        label,
+        path,
+        line,
+        None if block is None else block.slot_id,
+    )
+
+
+def _join_reasoning(braces, keyed, path, advisories):
+    """Attach each keyed comment to the brace it keys.
+
+    The label is the join key, and the grammar fixes token order but not
+    whitespace — drafting produced two spellings of one label without intent,
+    which orphaned the reasoning **silently**. Normalisation closes that, and a
+    key matching no brace warns rather than vanishing.
+    """
+    for key, entries in keyed.items():
+        reasoning, line = entries[0]
+        matched = [
+            annotation for _, _, annotation in braces if annotation.label == key
+        ]
+        for annotation in matched:
+            annotation.reasoning = reasoning
+        if not matched:
+            advisories.append(
+                (
+                    line,
+                    "%s:%d: `{{%s}}` keys no brace in this source, so its "
+                    "reasoning is attached to nothing" % (path.name, line, key),
+                )
+            )
+        # Keeping the first and dropping the rest silently is the orphan defect
+        # one step along, so it warns for the same reason and at the same tier.
+        for _, repeated in entries[1:]:
+            advisories.append(
+                (
+                    repeated,
+                    "%s:%d: `{{%s}}` is keyed again here, and only the comment "
+                    "at line %d is attached" % (path.name, repeated, key, line),
+                )
+            )
+
+
+def _without_braces(masked, spans):
+    """The text with every brace blanked as well as every comment.
+
+    The direction is committed by the **claim**, so the scan for it must not
+    see the labels — and a label carrying a `!` gate bit would otherwise read
+    as the end of a sentence. It blanks through `_blank_spans`, the same
+    length- and newline-preserving helper the prose diagnostics use, so every
+    offset still points at the author's own text.
+    """
+    return _blank_spans(masked, [(start, end) for start, end, _ in spans])
+
+
+def _collapse(text):
+    """Trimmed, with internal whitespace collapsed. Labels compare after this,
+    so a brace that wraps six lines is one label and not six."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _split_prefixes(label, venue=True):
+    """A collapsed label split into `[!] [SLOT:] [@owner] <label>`.
+
+    One implementation, because the token order is **one fact**: the brace
+    parser, the comment parser and the join key all read it, and this design
+    has twice held that two artifacts recording one fact is how they drift.
+
+    It strips and reports; it refuses nothing — each caller decides what is
+    legal in its own channel. `venue=False` is the comment channel, where
+    `SLOT:` is not part of the grammar and so stays in the label rather than
+    being read off it and lost.
+    """
+    gate = label.startswith("!")
+    if gate:
+        label = label[1:].lstrip()
+
+    behaviour = None
+    mark = SLOT_MARK.match(label) if venue else None
+    if mark:
+        behaviour = VENUE_SLOT
+        label = label[mark.end() :].lstrip()
+
+    owner = None
+    named = OWNER.match(label)
+    if named:
+        owner = named.group(0)
+        label = label[named.end() :].lstrip()
+
+    return gate, behaviour, owner, label
+
+
+def _join_key(label):
+    """A label as a join key: collapsed, and stripped of all three prefixes."""
+    return _split_prefixes(_collapse(label))[3]
+
+
+def _where(path, line):
+    """One source position, spelled the one way every diagnostic spells it."""
+    return "%s:%d" % (path.name, line)
+
+
+def _direction(bare, start, end):
+    """The directional word committed in the sentence resting on this hole.
+
+    Six of seven gating annotations in the corpus sat under a committed
+    direction written before the value existed — and deletion being the only
+    closure means the obligation vanishes the moment the value is filled. So
+    the direction is named while the hole is still open, on the hole's own
+    manifest entry, inheriting the hole's gate bit and adding none.
+    """
+    sentence = _sentence_around(bare, start, end)
+    found = DIRECTIONAL.search(sentence)
+    return found.group(0) if found else None
+
+
+def _sentence_around(bare, start, end):
+    """The sentence a brace sits in, minus the brace itself — the direction is
+    committed by the claim, never by the label.
+
+    `bare` is the text with braces blanked as well as comments, so a label's
+    own `!` gate bit cannot read as the end of a sentence.
+    """
+    left = 0
+    for match in SENTENCE_END.finditer(bare, 0, start):
+        left = match.end()
+    paragraph = bare.rfind("\n\n", 0, start)
+    if paragraph >= 0:
+        left = max(left, paragraph + 2)
+
+    right = len(bare)
+    found = SENTENCE_END.search(bare, end)
+    if found:
+        right = found.end()
+    paragraph = bare.find("\n\n", end)
+    if paragraph >= 0:
+        right = min(right, paragraph)
+    return bare[left:start] + " " + bare[end:right]
+
+
+def _block_alone(masked, start, end):
+    """Nothing but whitespace between the brace and the blank line on either
+    side. On the whole corpus that shape is always a venue slot — which is
+    strong evidence and not the definition, so it warns."""
+    left = masked.rfind("\n\n", 0, start)
+    left = 0 if left < 0 else left + 2
+    right = masked.find("\n\n", end)
+    right = len(masked) if right < 0 else right
+    return not (masked[left:start].strip() or masked[end:right].strip())
+
+
+def _close_raw(block, masked, end):
+    """A block's prose runs from its own anchor to the next one."""
+    if block is not None:
+        block.raw = masked[block.raw_start : end]
 
 
 def _attribute(prose, block, path, stray):
@@ -663,11 +1179,18 @@ def _line_of(text, offset):
     return text.count("\n", 0, offset) + 1
 
 
-def _mask_comments(text):
-    """Blank every comment's content, keeping the newlines, so a scan over the
-    result still reports the source's own line numbers."""
+def _mask_comments(text, fenced=()):
+    """Blank every comment's content to same-length whitespace, keeping the
+    newlines, so a scan over the result still reports the source's own line
+    numbers and offsets. A fenced comment is literal text, so it survives.
+
+    `fenced` defaults to none for a caller holding a fragment rather than a
+    whole file, where a whole file's fence offsets would not line up anyway.
+    """
 
     def blank(match):
+        if _inside(fenced, match.start()):
+            return match.group(0)
         return "".join("\n" if char == "\n" else " " for char in match.group(0))
 
     return COMMENT.sub(blank, text)
@@ -681,7 +1204,7 @@ def _refuse_headings(text, path, fenced):
     Both markdown spellings count. The underlined form is the one an editor
     reaches for by hand, so leaving it out would leave the surface open.
     """
-    masked = _mask_comments(text)
+    masked = _mask_comments(text, fenced)
     offset = 0
     previous = ""
     for number, line in enumerate(masked.splitlines(), start=1):
@@ -826,7 +1349,7 @@ def split_at_anchors(text, path):
     """
     anchors = [
         (slot_id, match.start(), match.end())
-        for match, slot_id in scan_source(text, path)
+        for match, slot_id in scan_source(text, path)[1]
         if slot_id is not None
     ]
     lead = text[: anchors[0][1]] if anchors else text
@@ -920,14 +1443,150 @@ def scaffold(source, skeleton, named_unit):
 
 
 # --------------------------------------------------------------------------
-# the brief — read here, owned elsewhere
+# the prose the diagnostics measure
+# --------------------------------------------------------------------------
+#
+# Every number in the reported tier is measured over the same text, and the
+# scope is stated rather than assumed: annotations, citation groups, tables,
+# fenced blocks and comments are out, and headings never arrive in the first
+# place because the skeleton owns them and the render injects them.
+#
+# Blanking, not deleting: every excluded span is replaced by spaces and its
+# newlines are kept, so a count still reports the author's own line numbers.
+
+
+def scope_prose(raw):
+    """The prose a diagnostic may read, with everything else blanked out."""
+    scoped = _blank_spans(raw, _fenced_spans(raw))
+    for pattern in (TABLE_ROW, CITATION_GROUP, BRACE_SPAN):
+        scoped = pattern.sub(_blank_match, scoped)
+    return scoped
+
+
+def _blank_spans(text, spans):
+    """Blank the given character ranges of `text`."""
+    for start, end in reversed(spans):
+        text = text[:start] + _blanked(text[start:end]) + text[end:]
+    return text
+
+
+def _blank_match(match):
+    """Blank what a pattern matched, for `re.sub`."""
+    return _blanked(match.group(0))
+
+
+def _blanked(text):
+    """The same text, same length, same newlines, no content.
+
+    Length and newlines are what make a reported line number the author's own,
+    so nothing here ever deletes a character.
+    """
+    return "".join("\n" if char == "\n" else " " for char in text)
+
+
+def in_scope(paper):
+    """Every in-scope block, paired with the prose a diagnostic may read."""
+    scope = set(slot.id for slot in paper.slots)
+    return [
+        (block, scope_prose(block.raw))
+        for block in paper.blocks
+        if block.slot_id in scope
+    ]
+
+
+def paragraphs(scoped, first_line):
+    """The blank-line-separated paragraphs of one block, each with its line."""
+    found = []
+    lines = []
+    start = None
+    for offset, line in enumerate(scoped.splitlines()):
+        if line.strip():
+            if start is None:
+                start = first_line + offset
+            lines.append(line)
+        elif lines:
+            found.append(("\n".join(lines), start))
+            lines, start = [], None
+    if lines:
+        found.append(("\n".join(lines), start))
+    return found
+
+
+def sentences(text):
+    """The sentences of one paragraph.
+
+    A trailing fragment with no terminator is a sentence: a paragraph ending in
+    a colon is still text a reader reads, and dropping it would understate
+    every number measured over it.
+    """
+    found = []
+    start = 0
+    for match in SENTENCE_END.finditer(text):
+        head = text[start : match.end()]
+        if ABBREVIATION.search(head.rstrip()):
+            continue
+        if head.strip():
+            found.append(head.strip())
+        start = match.end()
+    tail = text[start:].strip()
+    if tail:
+        found.append(tail)
+    return found
+
+
+def sentences_in_scope(paper):
+    """Every sentence in scope, in source order."""
+    found = []
+    for block, scoped in in_scope(paper):
+        for text, _ in paragraphs(scoped, block.raw_line):
+            found.extend(sentences(text))
+    return found
+
+
+def words(sentence):
+    """The words of one sentence, as `WORD` above defines a word."""
+    return WORD.findall(sentence)
+
+
+def _line_in(block, scoped, offset):
+    """The source line an offset into a block's prose sits on."""
+    return block.raw_line + _line_of(scoped, offset) - 1
+
+
+def _locations(spots):
+    """`(file, line)` pairs as the report prints them.
+
+    Bare line numbers over one source file, and file-qualified over several —
+    pre-promotion the sections are still separate files, where a bare `line 3`
+    could mean any of them. Each location prints once: the count already
+    carries the multiplicity, and a line named twice reads as two places.
+    """
+    if not spots:
+        return ""
+    names = set(name for name, _ in spots)
+    distinct = []
+    for spot in spots:
+        if spot not in distinct:
+            distinct.append(spot)
+    if len(names) == 1:
+        lines = ", ".join(str(line) for _, line in distinct)
+        return " (%s %s)" % ("line" if len(distinct) == 1 else "lines", lines)
+    return " (%s)" % ", ".join("%s:%d" % spot for spot in distinct)
+
+
+def _plural(count, noun):
+    return "%d %s%s" % (count, noun, "" if count == 1 else "s")
+
+
+# --------------------------------------------------------------------------
+# the brief, and the overlap instrument over it
 # --------------------------------------------------------------------------
 #
 # `briefs/<unit>.md` is a declared input, one per unit, beside the source. This
 # is the brief's only *parser*, but not its format's owner: the drafting skill
-# is to ship the two templates, and what this file fixes is the six zone
-# headings it parses and nothing else. So the parse surface stays a list of
-# headings, and a template that renames a zone shows up here as an unparsed
+# is the unit that ships the two templates, and what this file fixes is the six
+# zone headings it parses and nothing else. So the parse surface stays a list
+# of headings, and a template that renames a zone shows up here as an unparsed
 # zone rather than as silence.
 #
 # Exactly two zones are reader-facing, and they are the only zones whose content
@@ -948,11 +1607,11 @@ class Token:
 
     __slots__ = ("word", "closed", "start", "end")
 
-    def __init__(self, word, closed, start):
+    def __init__(self, word, closed, start, end):
         self.word = word
         self.closed = closed
         self.start = start
-        self.end = start + len(word)
+        self.end = end
 
 
 class Clause:
@@ -968,7 +1627,7 @@ class Clause:
 
     def __init__(self, text):
         self.text = text
-        self.tokens = _tokenize(text)
+        self.tokens = tokenize(text)
         self.words = [token.word for token in self.tokens]
 
 
@@ -986,19 +1645,15 @@ class Span:
     def tokens(self):
         return self.clause.tokens[self.start : self.start + self.length]
 
-    @property
-    def text(self):
+    def quote(self):
         """The span as the prose wrote it — case, punctuation and all.
 
-        The row prints this rather than the normalised words, because what the
-        author has to go and find is the phrase, and `Nextflow ≥ 25.04.0` is
-        not findable as `nextflow 25.04.0`.
+        Printed rather than the normalised words, because what the author has
+        to go and find is the phrase, and `Nextflow >= 25.04.0` is not findable
+        as `nextflow 25 04 0`.
         """
         tokens = self.tokens
-        return self.clause.text[tokens[0].start : tokens[-1].end]
-
-    def quote(self):
-        text = " ".join(self.text.split())
+        text = " ".join(self.clause.text[tokens[0].start : tokens[-1].end].split())
         return text if len(text) <= QUOTE_WIDTH else text[: QUOTE_WIDTH - 1] + "…"
 
     def carries_content(self):
@@ -1020,23 +1675,26 @@ class Span:
         for index, token in enumerate(tokens):
             if token.word in FINITE_FORMS:
                 return True
-            if self._third_person_present(tokens, index):
+            if _third_person_present(tokens, index):
                 return True
         return False
 
-    @staticmethod
-    def _third_person_present(tokens, index):
-        word = tokens[index].word
-        if len(word) < 4 or not word.endswith("s"):
-            return False
-        if word.endswith(("ss", "us", "is", "ies", "'s", "’s")):
-            return False
-        if index == 0 or index == len(tokens) - 1:
-            return False  # a span's last word has nothing left to predicate about
-        if tokens[index].closed:
-            return False  # punctuation closes an item, so this is its final noun
-        previous = tokens[index - 1].word
-        return previous not in NOT_A_SUBJECT and not previous[0].isdigit()
+
+def _third_person_present(tokens, index):
+    """Whether this word is a third-person present verb rather than a plural
+    noun — the one morphological rule the finite-verb test carries, and every
+    guard it needs to stay conservative."""
+    word = tokens[index].word
+    if len(word) < 4 or not word.endswith("s"):
+        return False
+    if word.endswith(("ss", "us", "is", "ies", "'s", "’s")):
+        return False
+    if index == 0 or index == len(tokens) - 1:
+        return False  # a span's last word has nothing left to predicate about
+    if tokens[index].closed:
+        return False  # punctuation closes an item, so this is its final noun
+    previous = tokens[index - 1].word
+    return previous not in NOT_A_SUBJECT and not previous[0].isdigit()
 
 
 class Brief:
@@ -1087,12 +1745,12 @@ class Brief:
                 for line in self.zones[name]
                 if line.strip() and not RELATION_LINE.match(line.strip())
             ]
-            items = _sentences(" ".join(lines))
-            if items:
-                return items
+            found = sentences(" ".join(lines))
+            if found:
+                return found
         return []
 
-    def overlap(self, prose_text):
+    def overlap(self, prose):
         """The spans a unit's prose shares with this brief's reader-facing
         zones, split by the instrument the zone they came from carries.
 
@@ -1102,13 +1760,13 @@ class Brief:
         item is a fact the prose must convey, so a shared span is expected
         unless it predicates.
         """
-        prose = _clauses(prose_text)
+        clauses = _clauses(prose)
         flagged = []
         expected = 0
         seen = set()
         for name, zone_text in self.reader_facing:
             windows = _windows(_clauses(zone_text))
-            for number, clause in enumerate(prose):
+            for number, clause in enumerate(clauses):
                 for span in _shared_spans(windows, clause):
                     key = (number, span.start, span.length)
                     if not span.carries_content() or key in seen:
@@ -1160,51 +1818,31 @@ def load_briefs(root, skeleton):
     )
 
 
-# --------------------------------------------------------------------------
-# the overlap instrument
-# --------------------------------------------------------------------------
-
-
-def _tokenize(text):
+def tokenize(text):
+    """The words of one clause, each with its offset and whether punctuation
+    closes it off. `WORD` above is the word this shares with every other
+    diagnostic."""
     tokens = []
-    for match in TOKEN.finditer(text.lower()):
-        word = match.group(0).rstrip(TRAILING)
-        if not word:
-            continue
+    for match in WORD.finditer(text):
         after = text[match.end() : match.end() + 1]
-        closed = (
-            bool(match.group(0)[len(word) :])  # the punctuation the word carries
-            or after in CLOSING
-            or after == ""  # a clause's last word closes on the clause
+        tokens.append(
+            Token(
+                match.group(0).lower(),
+                after in CLOSING or after == "",
+                match.start(),
+                match.end(),
+            )
         )
-        tokens.append(Token(word, closed, match.start()))
     return tokens
 
 
-def _paragraphs(prose):
-    return [block.strip() for block in re.split(r"\n\s*\n", prose) if block.strip()]
-
-
-def _sentences(text):
-    """Sentence-split on terminal punctuation, holding an abbreviation
-    together — `e.g.` mid-paragraph does not make a paragraph of two."""
-    parts = []
-    for part in SENTENCE_END.split(text.strip()):
-        part = part.strip()
-        if not part:
-            continue
-        if parts and ABBREVIATION.search(parts[-1]):
-            parts[-1] = "%s %s" % (parts[-1], part)
-        else:
-            parts.append(part)
-    return parts
-
-
 def _clauses(text):
+    """The text as one `Clause` per sentence, over the same paragraph and
+    sentence splits every other diagnostic reads."""
     return [
         Clause(sentence)
-        for block in _paragraphs(text)
-        for sentence in _sentences(block)
+        for paragraph, _ in paragraphs(text, 1)
+        for sentence in sentences(paragraph)
     ]
 
 
@@ -1250,14 +1888,24 @@ def _shared_spans(windows, clause):
     return spans
 
 
-# --------------------------------------------------------------------------
-# paragraph shape — originating units only
-# --------------------------------------------------------------------------
+def unit_paragraphs(paper, unit):
+    """The in-scope paragraphs of every block in a unit's subtree.
+
+    The same scoped prose every other diagnostic reads, so an annotation, a
+    table row and a fenced block are no more visible to the overlap instrument
+    than they are to the em-dash count.
+    """
+    subtree = set(slot.id for slot in paper.skeleton.subtree(unit))
+    found = []
+    for block, scoped in in_scope(paper):
+        if block.slot_id in subtree:
+            found.extend(text for text, _ in paragraphs(scoped, block.raw_line))
+    return found
 
 
 def _content_words(text):
     return set(
-        token.word for token in _tokenize(text) if token.word not in FUNCTION_WORDS
+        token.word for token in tokenize(text) if token.word not in FUNCTION_WORDS
     )
 
 
@@ -1276,7 +1924,7 @@ def _matching_item(paragraph, items):
     return best
 
 
-def _mirrored(paragraphs, items):
+def _mirrored(unit_prose, items):
     """How many paragraphs sit at the position of the brief item they are
     about — the one-bullet-per-paragraph walk, counted.
 
@@ -1287,7 +1935,7 @@ def _mirrored(paragraphs, items):
     """
     return sum(
         1
-        for index, paragraph in enumerate(paragraphs)
+        for index, paragraph in enumerate(unit_prose)
         if _matching_item(paragraph, items) == index
     )
 
@@ -1298,7 +1946,12 @@ def _mirrored(paragraphs, items):
 
 
 class Verdict:
-    """One row's outcome: which of the three verdicts, and what failed."""
+    """One row's outcome, and what it prints.
+
+    Three of the four shapes are verdicts — `PASS`, `FAIL`, `SKIPPED` — and the
+    fourth is a measurement, which is why a subclass may print a number where a
+    verdict word would otherwise go.
+    """
 
     def __init__(self, kind, problems=()):
         self.kind = kind
@@ -1318,18 +1971,34 @@ class Verdict:
         return "%s — %d (%s)" % (FAIL, len(self.problems), "; ".join(self.problems))
 
 
-class Measurement:
-    """A reported row's outcome: numbers, never a verdict.
+class Count(Verdict):
+    """A count measured against a threshold.
 
-    A reported row carries a prose fact, and a prose fact has no verdict to
-    give — `PASS` over one would claim the number is fine, which is a judgement
-    this unit does not make, and `FAIL` would be the threshold the design
-    refuses. So it prints what it measured, it can never fail, and it never
-    reaches the exit code.
+    The count and its locations print on both sides of the threshold, because
+    the gate always runs and always reports its number: raising the bar makes
+    the bar visible, never the count invisible.
+    """
+
+    def __init__(self, count, threshold, spots):
+        Verdict.__init__(self, FAIL if count > threshold else PASS)
+        self.count = count
+        self.spots = list(spots)
+
+    def render(self):
+        return "%s — %d%s" % (self.kind, self.count, _locations(self.spots))
+
+
+class Number(Verdict):
+    """A measurement, printed with no verdict word at all.
+
+    A threshold here would be a floor on a rhetorical move, and the cheapest
+    way to clear such a floor is to sprinkle `however` over paragraphs that
+    concede nothing. So these rows carry numbers, and the reader does the
+    reading.
     """
 
     def __init__(self, text):
-        self.kind = REPORTED
+        Verdict.__init__(self, NUMBER)
         self.text = text
 
     def render(self):
@@ -1380,12 +2049,28 @@ def check_originating_slot_children(paper):
     """
     problems = []
     for unit in paper.units:
-        rung = paper.spine.rung_for(unit.id)
-        if rung is not None and rung.originating and unit.children:
+        if _originates(paper, unit) and unit.children:
             problems.append(
                 "`%s` opens a debt and carries %d children"
                 % (unit.id, len(unit.children))
             )
+    return Verdict.over(problems)
+
+
+def check_gating_annotations(paper):
+    """No annotation carrying the gate bit is still open.
+
+    The render is faithful either way — a gap comes out as a token and lands in
+    the manifest — but the work is unfinished, so this gates submission and
+    never blocks circulation. Both brace behaviours and SILENT are in scope:
+    the bit is independent of what the reader sees, which is what lets a verify
+    flag emit nothing and still refuse a submission.
+    """
+    problems = [
+        "%s `%s`" % (annotation.where, annotation.label)
+        for annotation in paper.annotations_in_scope
+        if annotation.gate
+    ]
     return Verdict.over(problems)
 
 
@@ -1408,7 +2093,174 @@ def _owes_prose(paper, slot):
     return not slot.children and not paper.prose_for(slot)
 
 
-def report_brief_overlap(paper):
+# --------------------------------------------------------------------------
+# the chain walk
+#
+# A graph query over the ladder's declared relations, never a reading of the
+# prose — and it reads the **declared relation** and never the section type: a
+# Methods unit may carry the paper's load-bearing claim, and a walk that
+# expected an introduction to open every debt would false-fail on exactly that
+# paper.
+#
+# Debts are opened and closed by **units**. A rung keys to one unit, so there
+# is no debt edge inside a unit and nothing to check inside one; a rung naming
+# a child slot is the `unit / rung pairing` row's finding, not this walk's.
+#
+# This is the mechanical half only. Whether prose that *claims* to close a debt
+# actually closes it is judgement, and belongs to the review.
+# --------------------------------------------------------------------------
+
+
+def _debt_edges(spine):
+    """Who opens each debt and who closes it — the join every row of the walk
+    makes, so it is made once.
+
+    A debt is identified by its id and never by its text: the id is the join
+    key the ladder declares, and matching on the statement instead would leave
+    two innocent spellings of one debt silently orphaning the edge.
+    """
+    openers = {}
+    closers = {}
+    for rung in spine.rungs:
+        for debt, declared_closer, _statement in rung.opens:
+            openers.setdefault(debt, []).append((rung, declared_closer))
+        for debt in rung.closes:
+            closers.setdefault(debt, []).append(rung)
+    return openers, closers
+
+
+def check_chain_bookkeeping(paper):
+    """Every declared debt opened exactly once, closed exactly once, and none
+    dangling at the end.
+
+    Submit-gating: the render is faithful — the document says what the source
+    says — and it is the argument that is unfinished, so an unclosed debt still
+    circulates and only `--submit` refuses.
+    """
+    problems = []
+    known = set(rung.id for rung in paper.spine.rungs)
+    openers, closers = _debt_edges(paper.spine)
+
+    for rung in paper.spine.rungs:
+        for restated in rung.restates:
+            if restated not in known:
+                problems.append(
+                    "%s restates %s, which is not a rung in this ladder"
+                    % (rung.id, restated)
+                )
+
+    for debt in sorted(openers, key=_id_number):
+        opening = [rung.id for rung, _declared in openers[debt]]
+        closing = [rung.id for rung in closers.get(debt, [])]
+        if len(opening) > 1:
+            problems.append("`%s` is opened %s" % (debt, _repeated_by(opening)))
+        if not closing:
+            problems.append(
+                "`%s` is opened by %s and never closed" % (debt, opening[0])
+            )
+        elif len(closing) > 1:
+            problems.append("`%s` is closed %s" % (debt, _repeated_by(closing)))
+        for _rung, declared_closer in openers[debt]:
+            if declared_closer not in known:
+                problems.append(
+                    "`%s` declares %s closes it, which is not a rung in this ladder"
+                    % (debt, declared_closer)
+                )
+            elif closing and declared_closer not in closing:
+                problems.append(
+                    "`%s` declares %s closes it, but %s %s"
+                    % (
+                        debt,
+                        declared_closer,
+                        _listed(closing),
+                        "does" if len(closing) == 1 else "do",
+                    )
+                )
+
+    for debt in sorted(closers, key=_id_number):
+        if debt not in openers:
+            for rung in closers[debt]:
+                problems.append("%s closes `%s`, which no rung opens" % (rung.id, debt))
+
+    return Verdict.over(problems)
+
+
+def check_debt_precedence(paper):
+    """Every debt is opened in a unit no later than the unit that closes it,
+    read against the **skeleton's** order.
+
+    The skeleton's order is the document's reading order, and the reader is who
+    the rule protects: close a debt before the unit that opens it, and the
+    payoff arrives before the promise. Reading order and argument order are
+    different relations and may disagree, so the ladder's own order is not what
+    this reads. `restates` carries no precedence — an abstract restates a rung
+    the document has not reached yet, which is what an abstract is for.
+    """
+    order = dict((unit.id, index) for index, unit in enumerate(paper.skeleton.units))
+    openers, closers = _debt_edges(paper.spine)
+
+    problems = []
+    for debt in sorted(openers, key=_id_number):
+        closing = closers.get(debt, [])
+        if len(openers[debt]) != 1 or len(closing) != 1:
+            continue  # a debt opened or closed by nobody or by two is bookkeeping's
+        opened_in = openers[debt][0][0].unit
+        closed_in = closing[0].unit
+        if opened_in not in order or closed_in not in order:
+            continue  # a rung naming no unit is the pairing row's
+        if order[opened_in] > order[closed_in]:
+            problems.append(
+                "`%s` is opened in `%s` and closed in `%s`, which the skeleton "
+                "reads first" % (debt, opened_in, closed_in)
+            )
+    return Verdict.over(problems)
+
+
+def _id_number(identifier):
+    """`D10` sorts after `D2`, so a report's order is the ladder's own."""
+    return int(identifier[1:])
+
+
+def _repeated_by(rung_ids):
+    """`twice, by R1 and R2` — how many rungs did it, and which."""
+    count = "twice" if len(rung_ids) == 2 else "%d times" % len(rung_ids)
+    return "%s, by %s" % (count, _listed(rung_ids))
+
+
+def _listed(items):
+    """`R1, R2 and R3` — an English list, so a row reads as a sentence."""
+    if len(items) == 1:
+        return items[0]
+    return "%s and %s" % (", ".join(items[:-1]), items[-1])
+
+
+def em_dash_row(paper):
+    """The row name carries the threshold, so the number is read against the
+    bar that was actually in force."""
+    return "em dashes (threshold %d)" % paper.em_dash_threshold
+
+
+def check_em_dashes(paper):
+    """Count the em dashes in body prose, against the caller's threshold.
+
+    An em dash marks a logical relation without naming it, and the ban failed
+    98 times as a bullet a drafting session self-attested to. It is exactly as
+    countable as a figure reference, so it is counted.
+
+    Reported here, and a blocking gate at the drafting seam: one
+    implementation, invoked twice. What it never does is move the exit code —
+    gating submission is reserved to the annotation gate bit.
+    """
+    spots = []
+    for block, scoped in in_scope(paper):
+        offset = scoped.find(EM_DASH)
+        while offset >= 0:
+            spots.append((block.origin.name, _line_in(block, scoped, offset)))
+            offset = scoped.find(EM_DASH, offset + 1)
+    return Count(len(spots), paper.em_dash_threshold, spots)
+
+
+def check_brief_overlap(paper):
     """How much of each unit's brief reached its prose verbatim.
 
     A drafting session that walks its brief one bullet per paragraph produces a
@@ -1416,7 +2268,7 @@ def report_brief_overlap(paper):
     happening: the audit's own phrase for what it found is *transcribed
     near-verbatim from the briefs*. Both numbers are reported and neither is a
     floor — a threshold here would be a rule about prose, and rules about prose
-    is what the judgement axes are for.
+    are what the judgement axes are for.
     """
     flagged = []
     expected = 0
@@ -1430,8 +2282,8 @@ def report_brief_overlap(paper):
         if not brief.readable:
             notes.append("%s: %s" % (brief.path.name, brief.problem))
             continue
-        spans, expected_here = brief.overlap(paper.prose_of_unit(unit))
-        expected += expected_here
+        spans, counted = brief.overlap("\n\n".join(unit_paragraphs(paper, unit)))
+        expected += counted
         flagged.extend('%s: "%s"' % (unit.id, span.quote()) for span in spans)
 
     text = "%d flagged, %d expected" % (len(flagged), expected)
@@ -1440,65 +2292,205 @@ def report_brief_overlap(paper):
         detail.append("no brief for %s" % ", ".join(absent))
     if detail:
         text += " — %s" % "; ".join(detail)
-    return Measurement(text)
+    return Number(text)
 
 
-def report_paragraph_shape(paper):
-    """Single-sentence body paragraphs, and how many of a unit's paragraphs sit
-    at the position of the brief item they are about.
+def check_single_sentence_paragraphs(paper):
+    """Single-sentence body paragraphs, in originating units only.
 
-    **Originating units only.** For a non-originating unit both measures
-    invert: order tracking the brief is what a venue's field order and a
-    figure's lettering *mandate*, and a panel caption is not a unit of
-    argument, so a single-sentence paragraph is its normal shape. Run either on
-    a legend and it fires forever. There, the finite-verb test carries the whole
-    load.
+    Suspended everywhere else: a unit that only closes or restates a debt is
+    not a unit of argument, and a panel caption is not one either, so the
+    single-sentence signature does not transfer. Run it on a legend and it
+    fires forever.
     """
     originating = [unit for unit in paper.units if _originates(paper, unit)]
-    if not originating:
-        return Measurement("no originating unit in scope")
+    spots = []
+    for block, scoped in in_scope(paper):
+        slot = paper.skeleton.by_id(block.slot_id)
+        if slot is None or paper.skeleton.unit_of(slot) not in originating:
+            continue
+        for text, line in paragraphs(scoped, block.raw_line):
+            if len(sentences(text)) == 1:
+                spots.append((block.origin.name, line))
+    return Number(
+        "%d in %s%s%s"
+        % (
+            len(spots),
+            _plural(len(originating), "originating unit"),
+            _locations(spots),
+            _brief_order(paper, originating),
+        )
+    )
 
-    singles = []
+
+def _brief_order(paper, originating):
+    """How many of each unit's paragraphs sit at the position of the brief item
+    they are about — the one-bullet-per-paragraph walk, counted.
+
+    Suspended for a non-originating unit alongside the single-sentence count,
+    and for the same reason: order tracking the brief is what a venue's field
+    order and a figure's lettering *mandate* there, so it is the requirement
+    rather than the defect.
+    """
     walks = []
     notes = []
     for unit in originating:
-        paragraphs = _paragraphs(paper.prose_of_unit(unit))
-        singles.extend(
-            "%s ¶%d" % (unit.id, number)
-            for number, paragraph in enumerate(paragraphs, start=1)
-            if len(_sentences(paragraph)) == 1
-        )
         brief = paper.brief_for(unit)
-        if brief is None:
-            notes.append("%s: no brief" % unit.id)
-            continue
-        if not brief.readable:
-            notes.append("%s: %s" % (brief.path.name, brief.problem))
+        prose = unit_paragraphs(paper, unit)
+        if brief is None or not brief.readable or not prose:
+            # Said already, and once: the overlap row above names every unit
+            # with no brief and every brief this parser cannot read, and an
+            # undrafted unit is what `unfilled skeleton slot` fails on. Two
+            # rows carrying one fact is how the two of them drift.
             continue
         items = brief.items
         if not items:
             notes.append("%s: the brief states no reader-facing item" % unit.id)
             continue
-        if not paragraphs:
-            notes.append("%s: no drafted prose" % unit.id)
-            continue
-        walks.append(
-            "%d of %d (%s)" % (_mirrored(paragraphs, items), len(paragraphs), unit.id)
-        )
+        walks.append("%d of %d (%s)" % (_mirrored(prose, items), len(prose), unit.id))
 
-    text = "single-sentence %d" % len(singles)
-    if singles:
-        text += " (%s)" % ", ".join(singles)
+    order = ""
     if walks:
-        text += "; brief-order %s" % ", ".join(walks)
+        order += "; brief-order %s" % ", ".join(walks)
     if notes:
-        text += "; brief-order not measured (%s)" % "; ".join(notes)
-    return Measurement(text)
+        order += "; brief-order not measured (%s)" % "; ".join(notes)
+    return order
 
 
 def _originates(paper, unit):
+    """Whether this unit opens a debt, as the ladder declares it."""
     rung = paper.spine.rung_for(unit.id)
     return rung is not None and rung.originating
+
+
+def check_adversative_ratio(paper):
+    """The share of sentences that mark a turn.
+
+    Read as a consequence, never as a target: the number moves because the
+    em-dash gate forces relation-first rewriting. A low ratio beside a ladder
+    full of closed debts is the finding; a low ratio alone is not, and a
+    genuinely procedural Methods section concedes nothing, correctly.
+    """
+    found = sentences_in_scope(paper)
+    if not found:
+        return Number("0 of 0 sentences")
+    turning = [one for one in found if ADVERSATIVE.search(one)]
+    return Number(
+        "%d of %s (%d%%)"
+        % (
+            len(turning),
+            _plural(len(found), "sentence"),
+            round(100.0 * len(turning) / len(found)),
+        )
+    )
+
+
+def check_subject_openings(paper):
+    """How the sentences in scope begin, most frequent first.
+
+    A distribution rather than a cap: a ceiling on `We`-initial sentences has
+    the adversative floor's problem in reverse, and the measured drafting rate
+    was 6%. The opening word is what the audit measured, so it is what this
+    reports.
+
+    Every opening used more than once prints, however far down the order,
+    because concentration is the thing being read and a moderately used
+    opening is exactly what the audit's 6% was. The openings used once carry
+    no concentration, so they arrive as their own count rather than by name —
+    which keeps the row bounded without hiding a repeated opening behind a
+    rank cut.
+    """
+    found = sentences_in_scope(paper)
+    if not found:
+        return Number("0 sentences")
+    tally = {}
+    for one in found:
+        opening = words(one)
+        if opening:
+            tally[opening[0]] = tally.get(opening[0], 0) + 1
+    ranked = sorted(tally.items(), key=lambda pair: (-pair[1], pair[0]))
+    shown = ["%s %d" % pair for pair in ranked if pair[1] > 1]
+    once = [opening for opening, count in ranked if count == 1]
+    if once:
+        shown.append("%d used once" % len(once))
+    return Number(
+        "%s (of %s)" % (", ".join(shown), _plural(len(found), "sentence"))
+    )
+
+
+def check_sentence_length(paper):
+    """Mean, coefficient of variation, and the share over 35 words.
+
+    Three numbers rather than a cap, because a cap is an unconditional
+    transform over finished prose and what it removes is subordination. These
+    are the numbers that would have caught a flat rhythm at the time.
+    """
+    found = sentences_in_scope(paper)
+    if not found:
+        return Number("0 sentences")
+    lengths = [len(words(one)) for one in found]
+    mean = sum(lengths) / float(len(lengths))
+    variance = sum((length - mean) ** 2 for length in lengths) / float(len(lengths))
+    long_ones = [length for length in lengths if length > LONG_SENTENCE]
+    return Number(
+        "mean %.1f, CV %.2f, %d%% over %d words (%s)"
+        % (
+            mean,
+            (variance ** 0.5) / mean if mean else 0.0,
+            round(100.0 * len(long_ones) / len(lengths)),
+            LONG_SENTENCE,
+            _plural(len(found), "sentence"),
+        )
+    )
+
+
+# --------------------------------------------------------------------------
+# the locality test
+#
+# An amendment touching only the amending session's own slot is immediate; one
+# touching another slot, or the order or levels of the tree, files a `task`
+# ticket that blocks the draft ticket. See `SKELETON-FORMAT.md`, which holds
+# the rule and the two lists.
+#
+# The render never sees a proposed amendment, so what it reports is what the
+# two files fix before one is proposed: the tree an amendment would move, and
+# the coupling that decides which side of the rule a move falls on.
+# --------------------------------------------------------------------------
+
+
+def report_locality(paper):
+    """The tree an amendment moves, and the edges that tie one unit to another.
+
+    A unit's own subtree is its to amend; the tree's order and levels are
+    nobody's alone; and every edge leaving a unit — a debt it opens that
+    another unit closes, a rung in another unit it restates — is a tie an
+    amendment cannot move on its own.
+
+    It reports and never gates, because a coupled argument is what a ladder
+    *is*, not a defect in one.
+    """
+    edges = []
+    _openers, closers = _debt_edges(paper.spine)
+    for rung in paper.spine.rungs:
+        for debt, _declared_closer, _statement in rung.opens:
+            for other in closers.get(debt, []):
+                if other.unit != rung.unit:
+                    edges.append("`%s` %s→%s" % (debt, rung.unit, other.unit))
+        for restated in rung.restates:
+            other = paper.spine.by_id(restated)
+            if other is not None and other.unit != rung.unit:
+                edges.append("%s restates %s" % (rung.unit, other.unit))
+
+    tree = "%s, %s" % (
+        _plural(len(paper.skeleton.units), "unit"),
+        _plural(len(paper.skeleton.slots), "slot"),
+    )
+    if not edges:
+        return Number("%s, no cross-unit edge" % tree)
+    return Number(
+        "%s, %s (%s)"
+        % (tree, _plural(len(edges), "cross-unit edge"), "; ".join(edges))
+    )
 
 
 # Row order is this registry's order, and it is fixed: `review-paper` reports
@@ -1510,7 +2502,7 @@ def _originates(paper, unit):
 #
 #   parse    skeleton / spine grammar    (built)
 #   parse    source grammar              (built)
-#   parse    brace grammar               annotation channel
+#   parse    brace grammar               (built)
 #   parse    citation group              citations
 #   parse    reference literals          figures and panels
 #   hard     slot integrity              (built; becomes slot / roster
@@ -1519,32 +2511,58 @@ def _originates(paper, unit):
 #   hard     citation → bib entry        citations
 #   hard     unit / rung pairing         (built)
 #   hard     originating slot children   (built)
-#   gating   annotations (gating)        annotation channel
+#   gating   annotations (gating)        (built)
 #   gating   unfilled skeleton slot      (built)
 #   gating   bare holes                  residue lints
 #   gating   workflow phrases            residue lints
-#   gating   chain bookkeeping           chain walk
-#   reported em dashes                  the reported tier
-#   reported brief-to-prose overlap     (built)
-#   reported paragraphs (originating)   (built)
-#   reported the Tier 4 diagnostics     the reported tier
-#   reported locality test              chain walk
-#   reported supersession diff          the supersession diff
+#   gating   chain bookkeeping           (built)
+#   gating   debt precedence             (built)
+#   reported em dashes                   (built)
+#   reported brief-to-prose overlap      (built)
+#   reported single-sentence body …      (built, and paragraph order joined it
+#                                        with the overlap instrument)
+#   reported adversative ratio           (built)
+#   reported subject openings            (built)
+#   reported sentence length             (built)
+#   reported locality test               (built)
+#   reported supersession diff           supersession diff
 #
 # The two parse-tier rows built here have no entry below: a parse error means
 # nothing ran, so the table is absent rather than carrying their verdicts.
+#
+# A row name may be a function of the paper, for a row whose name carries the
+# threshold the number was measured against.
 REGISTRY = [
     ("slot integrity", HARD, DOCUMENT, check_slot_integrity),
     ("unit / rung pairing", HARD, None, check_unit_rung_pairing),
     ("originating slot children", HARD, None, check_originating_slot_children),
+    ("annotations (gating)", GATING, None, check_gating_annotations),
     ("unfilled skeleton slot", GATING, None, check_unfilled_skeleton_slot),
-    ("brief-to-prose overlap", REPORTED, None, report_brief_overlap),
-    ("paragraphs (originating)", REPORTED, None, report_paragraph_shape),
+    ("chain bookkeeping", GATING, DOCUMENT, check_chain_bookkeeping),
+    ("debt precedence", GATING, DOCUMENT, check_debt_precedence),
+    (em_dash_row, REPORTED, None, check_em_dashes),
+    ("brief-to-prose overlap", REPORTED, None, check_brief_overlap),
+    (
+        "single-sentence body paragraphs",
+        REPORTED,
+        None,
+        check_single_sentence_paragraphs,
+    ),
+    ("adversative ratio", REPORTED, DOCUMENT, check_adversative_ratio),
+    ("subject openings", REPORTED, DOCUMENT, check_subject_openings),
+    ("sentence length", REPORTED, DOCUMENT, check_sentence_length),
+    ("locality test", REPORTED, DOCUMENT, report_locality),
 ]
+
+# The three Tier 4 diagnostics are whole-document only, and the em-dash count
+# is not: the count blocks a drafting seam, and a seam is one section. The
+# three are reported together over the finished piece, because a rhythm number
+# published per seam is a number a drafter tunes at the seam — which is the
+# behaviour `no threshold` exists to prevent.
 
 # The parse-tier rows print `PASS` whenever a table prints at all, because a
 # parse-tier failure suppresses the table.
-PARSE_ROWS = ["skeleton / spine grammar", "source grammar"]
+PARSE_ROWS = ["skeleton / spine grammar", "source grammar", "brace grammar"]
 
 
 # --------------------------------------------------------------------------
@@ -1556,18 +2574,23 @@ class Paper:
     """One paper at one granularity: the two files, the source, and the slots
     in scope."""
 
-    def __init__(self, skeleton, spine, briefs, blocks, stray, granularity, unit):
+    def __init__(
+        self, skeleton, spine, briefs, source, granularity, unit, em_dash_threshold
+    ):
         self.skeleton = skeleton
         self.spine = spine
         self.briefs = briefs
-        self.blocks = blocks
-        self.stray = stray
+        self.blocks = source.blocks
+        self.stray = source.stray
+        self.annotations = source.annotations
+        self.warnings = source.warnings
         self.granularity = granularity
         self.unit = unit
+        self.em_dash_threshold = em_dash_threshold
         self.slots = skeleton.subtree(unit) if unit is not None else skeleton.slots
         self.units = [unit] if unit is not None else skeleton.units
         self._prose = {}
-        for block in blocks:
+        for block in self.blocks:
             if block.slot_id in self._prose:
                 # Two anchors claiming one slot is a hard error, and at whole
                 # document granularity nothing is emitted. Keep both blocks'
@@ -1580,20 +2603,25 @@ class Paper:
     def prose_for(self, slot):
         return self._prose.get(slot.id, "")
 
-    def prose_of_unit(self, unit):
-        """Every slot in the unit's subtree, in skeleton order. A unit is what a
-        brief keys on, so a unit's prose is what its brief is measured
-        against."""
-        return "\n\n".join(
-            prose
-            for prose in (
-                self.prose_for(slot) for slot in self.skeleton.subtree(unit)
-            )
-            if prose
-        )
-
     def brief_for(self, unit):
         return self.briefs.get(unit.id)
+
+    @property
+    def annotations_in_scope(self):
+        """The annotations the gate can speak for at this granularity.
+
+        The **gate** is scoped the way every other row is. The **manifest** is
+        not: it enters whole, because it is `f(source)` recomputed per render
+        and an absolute input to a diff-relative judgement axis.
+        """
+        if self.granularity == DOCUMENT:
+            return self.annotations
+        in_scope = set(slot.id for slot in self.slots)
+        return [
+            annotation
+            for annotation in self.annotations
+            if annotation.slot_id in in_scope
+        ]
 
 
 def render_document(paper):
@@ -1619,21 +2647,96 @@ def render_document(paper):
 
 
 def _hole(label):
-    return "⟦HOLE: %s⟧" % label
+    return "⟦%s: %s⟧" % (HOLE, label)
+
+
+def format_manifest(annotations):
+    """Every open annotation, grouped by `@owner`.
+
+    Grouping by owner is what makes it **sendable**: an experimentalist can be
+    handed their own group and nothing else. It is printed whether or not it is
+    empty, because an absent manifest reads as nobody having looked — and it is
+    an input to a judgement axis that has no previous manifest to diff.
+    """
+    lines = [""]
+    if annotations:
+        gating = sum(1 for annotation in annotations if annotation.gate)
+        lines.append(
+            "%smanifest — %d open annotation%s, %d carrying the gate bit"
+            % (INDENT, len(annotations), "" if len(annotations) == 1 else "s", gating)
+        )
+    else:
+        lines.append("%smanifest — no open annotations" % INDENT)
+    lines.append(
+        "%s→ f(source), recomputed at every render; deletion is the only closure"
+        % INDENT
+    )
+
+    width = max([len(annotation.where) for annotation in annotations] or [0])
+    for owner in sorted(set(annotation.owner for annotation in annotations)):
+        lines.append("")
+        lines.append("%s%s" % (INDENT, owner))
+        for annotation in annotations:
+            if annotation.owner != owner:
+                continue
+            lines.append(
+                "%s%s%s  %s  %s  %s"
+                % (
+                    INDENT,
+                    INDENT,
+                    "!" if annotation.gate else " ",
+                    annotation.behaviour.ljust(BEHAVIOUR_WIDTH),
+                    annotation.where.ljust(width),
+                    annotation.label,
+                )
+            )
+            for name, value in (
+                ("direction", _direction_line(annotation)),
+                ("reasoning", annotation.reasoning),
+            ):
+                if value:
+                    lines.append("%s%s: %s" % (" " * 7, name, value))
+    return "\n".join(lines) + "\n"
+
+
+def _direction_line(annotation):
+    if annotation.direction is None:
+        return None
+    return "`%s` is committed before this value exists" % annotation.direction
+
+
+def format_warnings(warnings):
+    """Advisory, and advisory means advisory: never a row, never an exit code.
+
+    A hard cap on either lint was rejected — it over- and under-fires, refusing
+    a legitimate 110-character noun phrase while passing a 90-character
+    imperative.
+    """
+    if not warnings:
+        return ""
+    lines = ["", "%swarnings — advisory; never a refusal" % INDENT, ""]
+    lines.extend("%s%s%s" % (INDENT, INDENT, warning) for warning in warnings)
+    return "\n".join(lines) + "\n"
 
 
 def format_report(rows, granularity):
     """The table `review-paper` reports verbatim, so its shape is an interface."""
     lines = []
-    counts = {PASS: 0, FAIL: 0, SKIPPED: 0, REPORTED: 0}
+    counts = {PASS: 0, FAIL: 0, SKIPPED: 0, NUMBER: 0}
     for name, verdict in rows:
         lines.append("%s%s %s" % (INDENT, name.ljust(NAME_WIDTH - 1), verdict.render()))
         counts[verdict.kind] += 1
     lines.append("")
-    lines.append(
-        "%s%d pass, %d fail, %d out of scope, %d reported"
-        % (INDENT, counts[PASS], counts[FAIL], counts[SKIPPED], counts[REPORTED])
+    tally = "%s%d pass, %d fail, %d out of scope" % (
+        INDENT,
+        counts[PASS],
+        counts[FAIL],
+        counts[SKIPPED],
     )
+    if counts[NUMBER]:
+        # Counted apart from the verdicts, because a number is not one.
+        tally += ", %d reported" % counts[NUMBER]
+    lines.append(tally)
     lines.append(
         "%s→ NOT a claim that this %s is finished"
         % (INDENT, SECTION if granularity == SECTION else DOCUMENT)
@@ -1642,18 +2745,24 @@ def format_report(rows, granularity):
 
 
 def run_gate(paper):
-    """Every row in registry order, and the failed rows by tier."""
+    """Every row in registry order, and the failed rows by tier.
+
+    Only the tiers that can gate have a bucket, so a reported row's FAIL lands
+    nowhere at all. That is the mechanism by which it cannot reach the exit
+    code: not a rule the caller has to honour, but a bucket that is not there.
+    """
     rows = [(name, Verdict(PASS)) for name in PARSE_ROWS]
-    failed = {HARD: [], GATING: [], REPORTED: []}
+    failed = {HARD: [], GATING: []}
     for name, tier, scope, check in REGISTRY:
+        label = name(paper) if callable(name) else name
         verdict = (
             Verdict.skipped()
             if scope == DOCUMENT and paper.granularity == SECTION
             else check(paper)
         )
-        rows.append((name, verdict))
-        if verdict.kind == FAIL:
-            failed[tier].append((name, verdict))
+        rows.append((label, verdict))
+        if verdict.kind == FAIL and tier in failed:
+            failed[tier].append((label, verdict))
     return rows, failed
 
 
@@ -1702,33 +2811,64 @@ def build_parser():
         metavar="DIR",
         help="the paper root; defaults to the nearest ancestor holding skeleton.md",
     )
+    parser.add_argument(
+        "--em-dash-threshold",
+        type=threshold,
+        default=EM_DASH_DEFAULT,
+        metavar="N",
+        help="how many em dashes the prose may carry; the caller's `## Style` "
+        "supplies it, and the skill default is %d" % EM_DASH_DEFAULT,
+    )
     return parser
+
+
+def threshold(value):
+    """A threshold is a finite non-negative integer.
+
+    There is no `off`, no `none` and no infinity. An effort may raise the bar
+    as far as it likes, visibly, and cannot remove the gate: the gate always
+    runs and always reports its count.
+    """
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "`%s` is not a finite non-negative integer — a threshold has no "
+            "`off`, no `none` and no infinity" % value
+        )
+    if number < 0:
+        raise argparse.ArgumentTypeError(
+            "`%s` is not a finite non-negative integer" % value
+        )
+    return number
 
 
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    source = Path(args.source)
+    source_path = Path(args.source)
     granularity = SECTION if args.section is not None else DOCUMENT
 
     try:
-        root = find_paper_root(source, Path(args.paper) if args.paper else None)
+        root = find_paper_root(source_path, Path(args.paper) if args.paper else None)
         if args.scaffold:
             # The scaffold writes the source rather than reading a finished
             # one, so it neither reads the ladder — the gate's input, with no
             # use here — nor runs a check: it emits no document to be wrong.
             # It is always one unit, so `--section` names that unit here rather
             # than choosing a granularity.
-            return scaffold(source, parse_skeleton(root / "skeleton.md"), args.section)
-        paths = source_paths(source)
+            return scaffold(
+                source_path, parse_skeleton(root / "skeleton.md"), args.section
+            )
+        paths = source_paths(source_path)
         skeleton = parse_skeleton(root / "skeleton.md")
         spine = parse_spine(root / "spine.md")
-        blocks, stray = parse_source(paths)
+        source = parse_source(paths)
         briefs = load_briefs(root, skeleton)
         unit = None
         if granularity == SECTION:
-            unit = derive_unit(skeleton, blocks, args.section)
+            unit = derive_unit(skeleton, source.blocks, args.section)
     except ParseError as error:
         sys.stderr.write("render-paper: parse error — %s\n" % error)
         return EXIT_PARSE
@@ -1736,9 +2876,15 @@ def main(argv=None):
         sys.stderr.write("render-paper: %s\n" % error)
         return EXIT_HARD
 
-    paper = Paper(skeleton, spine, briefs, blocks, stray, granularity, unit)
+    paper = Paper(
+        skeleton, spine, briefs, source, granularity, unit, args.em_dash_threshold
+    )
     rows, failed = run_gate(paper)
-    report = format_report(rows, granularity)
+    report = (
+        format_report(rows, granularity)
+        + format_manifest(paper.annotations)
+        + format_warnings(paper.warnings)
+    )
 
     if failed[HARD]:
         sys.stderr.write(report)

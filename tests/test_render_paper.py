@@ -7,14 +7,27 @@ what a caller can see: the exit code, the emitted document, the verdict report.
 PASS = "PASS"
 SKIPPED = "SKIPPED — OUT OF SCOPE AT THIS GRANULARITY"
 
+# The verdict column starts here: the report's two-space indent, the width the
+# row names are padded to, and the single space after it.
+VERDICT_COLUMN = 34
 
-def _rows(report):
-    """The verdict table as `name -> what the row says`."""
+
+def rows_of(report):
+    """The verdict table as `{row name: what that row printed}`."""
     return dict(
-        (line[:27].strip(), line[27:].strip())
-        for line in report.splitlines()
-        if line.startswith("  ") and line[2:3] != " "
+        (line[:VERDICT_COLUMN].strip(), line[VERDICT_COLUMN:].strip())
+        for line in table_lines(report)
     )
+
+
+def table_lines(report):
+    """The report's rows: everything above the blank line before the tally."""
+    lines = []
+    for line in report.splitlines():
+        if not line.strip():
+            break
+        lines.append(line)
+    return lines
 
 
 class TestCheckMode:
@@ -88,21 +101,21 @@ class TestHardErrorTier:
         result = render("duplicate-slot", "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert "slot integrity            FAIL" in result.report
+        assert rows_of(result.report)["slot integrity"].startswith("FAIL")
         assert "anchored twice" in result.report
 
     def test_an_anchor_naming_no_skeleton_slot_is_a_hard_error(self, render):
         result = render("orphan-slot", "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert "slot integrity            FAIL" in result.report
+        assert rows_of(result.report)["slot integrity"].startswith("FAIL")
         assert "absent from the skeleton" in result.report
 
     def test_an_originating_slot_bearing_children_is_a_hard_error(self, render):
         result = render("originating-children", "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert "originating slot children FAIL" in result.report
+        assert rows_of(result.report)["originating slot children"].startswith("FAIL")
         assert "opens a debt and carries 2 children" in result.report
 
     def test_a_hard_error_emits_nothing_under_circulate(self, render):
@@ -180,7 +193,7 @@ class TestSectionGranularity:
     def test_whole_document_rows_are_printed_as_skipped(self, render):
         result = render("clean", "MANUSCRIPT.working.md", "--check", "--section", "methods")
 
-        rows = _rows(result.report)
+        rows = rows_of(result.report)
 
         assert "slot integrity" in rows
         assert rows["slot integrity"] != PASS
@@ -203,7 +216,7 @@ class TestSectionGranularity:
         result = render("unfilled-slot", "MANUSCRIPT.working.md", "--check", "--section")
 
         assert result.exit_code == 0
-        assert "unfilled skeleton slot    PASS" in result.report
+        assert rows_of(result.report)["unfilled skeleton slot"] == PASS
 
 
 class TestTheCLIContract:
@@ -429,7 +442,7 @@ class TestUnitRungPairing:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 2
-        assert "unit / rung pairing       FAIL" in result.report
+        assert rows_of(result.report)["unit / rung pairing"].startswith("FAIL")
         assert "`results` carries no rung" in result.report
 
     def test_a_rung_naming_something_that_is_not_a_unit_is_a_hard_error(
@@ -478,7 +491,7 @@ class TestParentSlotsBearProseOptionally:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 0
-        assert "unfilled skeleton slot    PASS" in result.report
+        assert rows_of(result.report)["unfilled skeleton slot"] == PASS
 
     def test_and_renders_its_heading_with_no_hole_under_it(self, paper, run_in):
         where = paper("clean")
@@ -513,7 +526,7 @@ class TestAnUnfilledTitle:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 1
-        assert "unfilled skeleton slot    FAIL — 1 (the document title)" in result.report
+        assert rows_of(result.report)["unfilled skeleton slot"] == "FAIL — 1 (the document title)"
 
     def test_and_circulate_marks_it_in_the_h1(self, paper, run_in):
         where = paper("clean")
@@ -568,6 +581,279 @@ class TestNoProseIsEverDroppedSilently:
         assert result.exit_code == 0
         assert "The paper measures one thing." in result.document
         assert "A second block claiming the same slot." in result.document
+
+
+class TestTheReportedTier:
+    """Numbers, never verdicts, and never the exit code.
+
+    The em-dash count is measured against a threshold; the three Tier 4
+    diagnostics carry no threshold at all, because a threshold on a rhetorical
+    move is satisfied by sprinkling `however`.
+    """
+
+    def test_the_table_is_verbatim(self, render, golden):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert result.report == golden("prose-diagnostics-check.txt")
+
+    def test_the_em_dash_row_carries_the_count_the_threshold_and_the_lines(
+        self, render
+    ):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        rows = rows_of(result.report)
+
+        assert "em dashes (threshold 0)" in rows
+        assert rows["em dashes (threshold 0)"] == "FAIL — 3 (lines 4, 18, 23)"
+
+    def test_a_count_over_threshold_leaves_the_exit_code_alone(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+
+    def test_and_submit_still_emits_the_document(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--submit")
+
+        assert result.exit_code == 0
+        assert "refused" not in result.report
+        assert "## Results and discussion" in result.document
+
+    def test_the_count_is_scoped_to_prose(self, render):
+        # The fixture carries seven em dashes and three of them are prose: the
+        # others sit in a comment, a table row, a fence and a citation group,
+        # so an unscoped count would fire on a quoted source title.
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["em dashes (threshold 0)"].endswith(
+            "3 (lines 4, 18, 23)"
+        )
+
+    def test_the_threshold_comes_from_the_caller(self, render):
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--em-dash-threshold",
+            "3",
+        )
+
+        rows = rows_of(result.report)
+
+        assert "em dashes (threshold 3)" in rows
+        assert rows["em dashes (threshold 3)"] == "PASS — 3 (lines 4, 18, 23)"
+
+    def test_a_passing_count_is_still_reported(self, render):
+        # The gate always runs and always reports its count, so raising the bar
+        # cannot make the number invisible.
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--em-dash-threshold",
+            "99",
+        )
+
+        assert "3 (lines 4, 18, 23)" in result.report
+
+    def test_the_skill_level_default_threshold_is_zero(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        assert "em dashes (threshold 0)" in rows_of(result.report)
+
+    def test_an_em_dash_in_a_comment_is_not_prose(self, render):
+        # The clean fixture's first line is a comment carrying an em dash.
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["em dashes (threshold 0)"] == "PASS — 0"
+
+    def test_a_negative_threshold_is_refused(self, render):
+        result = render(
+            "clean", "MANUSCRIPT.working.md", "--check", "--em-dash-threshold", "-1"
+        )
+
+        assert result.exit_code == 2
+        assert "finite non-negative integer" in result.report
+
+    def test_there_is_no_off_no_none_and_no_infinity(self, render):
+        for value in ("off", "none", "inf", "∞", "1.5"):
+            result = render(
+                "clean",
+                "MANUSCRIPT.working.md",
+                "--check",
+                "--em-dash-threshold",
+                value,
+            )
+
+            assert result.exit_code == 2
+            assert "finite non-negative integer" in result.report
+
+    def test_the_em_dash_count_runs_at_section_granularity(self, render):
+        # It blocks the seam in `write-paper`, so it cannot be whole-document
+        # only — the seam is a section.
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--section",
+            "results",
+        )
+
+        assert rows_of(result.report)["em dashes (threshold 0)"] == (
+            "FAIL — 2 (lines 18, 23)"
+        )
+
+    def test_the_tier_four_diagnostics_carry_numbers_and_no_verdict(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        rows = rows_of(result.report)
+
+        for name in ("adversative ratio", "subject openings", "sentence length"):
+            assert name in rows
+            assert PASS not in rows[name]
+            assert "FAIL" not in rows[name]
+            assert SKIPPED not in rows[name]
+
+    def test_the_adversative_ratio_is_a_ratio_over_sentences(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["adversative ratio"] == (
+            "2 of 9 sentences (22%)"
+        )
+
+    def test_the_subject_openings_are_a_distribution(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        openings = rows_of(result.report)["subject openings"]
+
+        assert openings.startswith("The 4")
+        assert "of 9 sentences" in openings
+
+    def test_the_sentence_length_row_carries_mean_cv_and_share_over_35(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        length = rows_of(result.report)["sentence length"]
+
+        assert "mean " in length
+        assert "CV " in length
+        assert "over 35 words" in length
+
+    def test_the_tier_four_rows_are_out_of_scope_at_section_granularity(self, render):
+        # Whole-piece only: a number reported per seam is a number a drafter
+        # tunes at the seam, which is what `no threshold` exists to prevent.
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--section",
+            "results",
+        )
+
+        rows = rows_of(result.report)
+
+        for name in ("adversative ratio", "subject openings", "sentence length"):
+            assert rows[name] == SKIPPED
+
+    def test_single_sentence_body_paragraphs_are_reported(self, render):
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["single-sentence body paragraphs"] == (
+            "2 in 1 originating unit (lines 8, 10)"
+        )
+
+    def test_they_are_suspended_for_a_non_originating_unit(self, render):
+        # A unit that only closes or restates is not a unit of argument, so
+        # §4a's single-sentence signature does not transfer to it.
+        result = render(
+            "prose-diagnostics",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--section",
+            "results",
+        )
+
+        assert rows_of(result.report)["single-sentence body paragraphs"] == (
+            "0 in 0 originating units"
+        )
+
+    def test_no_reported_row_changes_the_exit_code(self, paper, run_in):
+        # Every reported row failing at once, over a paper whose gating and
+        # hard rows all pass.
+        where = paper("prose-diagnostics")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "Registration drift is unaddressed.",
+                "Registration drift — unaddressed — is the gap.",
+            )
+        )
+
+        for mode in ("--check", "--circulate", "--submit"):
+            result = run_in(where, "MANUSCRIPT.working.md", mode)
+
+            assert result.exit_code == 0
+            assert "FAIL" in result.report
+
+    def test_locations_are_file_qualified_over_a_directory_of_sources(
+        self, paper, run_in
+    ):
+        # Pre-promotion the sections are still separate files, where a bare
+        # `line 4` could mean any of them.
+        where = paper("pre-promotion")
+        for name in ("abstract.md", "results.md"):
+            source = where / "drafts" / name
+            source.write_text(source.read_text().replace(", and", " — and"))
+
+        result = run_in(where, "drafts", "--check")
+
+        assert rows_of(result.report)["em dashes (threshold 0)"] == (
+            "FAIL — 2 (abstract.md:4, results.md:4)"
+        )
+
+    def test_an_abbreviation_does_not_end_a_sentence(self, paper, run_in):
+        # `Fig. 2` is mid-sentence; `no.` is a word a sentence can end on, and
+        # merging two sentences would corrupt every number measured over them.
+        where = paper("clean")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "We register cyclic imaging panels across rounds and report the accuracy "
+                "of that registration.",
+                "Drift is visible in Fig. 2 of the earlier report. Whether it was ever "
+                "corrected: no. We report the accuracy of the registration.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert "(8 sentences)" in rows_of(result.report)["sentence length"]
+
+    def test_a_bracket_span_with_no_citation_key_is_prose(self, paper, run_in):
+        # Blanking a bracket span that is not a citation group would shorten
+        # the sentence every number is measured over, and hide an em dash
+        # sitting in prose the author wrote.
+        where = paper("prose-diagnostics")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "Registration drift is unaddressed.",
+                "Registration drift [the earlier review — unaddressed] is the gap.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert rows_of(result.report)["em dashes (threshold 0)"] == (
+            "FAIL — 4 (lines 4, 8, 18, 23)"
+        )
+
+    def test_every_row_prints_its_verdict_in_the_same_column(self, render):
+        # The table is an interface `review-paper` reports verbatim, and the
+        # column is what a longer row name breaks silently.
+        result = render("prose-diagnostics", "MANUSCRIPT.working.md", "--check")
+
+        for line in table_lines(result.report):
+            assert line[VERDICT_COLUMN - 1] == " "
+            assert line[VERDICT_COLUMN] != " "
 
 
 class TestScaffold:
@@ -920,58 +1206,327 @@ class TestScaffoldRefusals:
         assert not (where / "methods.md").exists()
 
 
-class TestTheReportedTier:
-    """A reported row carries a prose fact. It has no verdict to give and no
-    threshold behind it, so it can never fail and never reaches the exit
-    code."""
+class TestChainBookkeeping:
+    """The chain walk is a graph query over declared metadata: every declared
+    debt opened exactly once, closed exactly once, none dangling at the end.
 
-    def test_a_reported_row_carries_numbers_and_not_a_verdict(self, render, golden):
-        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+    Submit-gating, because the render is faithful — the document says what the
+    source says — and it is the argument that is unfinished.
+    """
 
-        assert result.report == golden("brief-mirror-check.txt")
-        assert "brief-to-prose overlap    4 flagged, 1 expected" in result.report
+    def test_a_debt_nobody_closes_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("- closes: D1\n", ""))
 
-    def test_no_reported_row_changes_the_exit_code(self, render):
-        # The fixture's every paragraph is transcribed from its brief and its
-        # order mirrors the brief item for item. Nothing about that is a gate.
-        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert rows_of(result.report)["chain bookkeeping"].startswith("FAIL")
+        assert "`D1` is opened by R2 and never closed" in result.report
+
+    def test_a_debt_opened_twice_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text().replace(
+                "- restates: R4",
+                "- opens: D1 (closed by R4) — whether the registration is accurate",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "`D1` is opened twice, by R1 and R2" in result.report
+
+    def test_a_debt_closed_twice_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text().replace(
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration",
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration\n- closes: D1",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "`D1` is closed twice, by R3 and R4" in result.report
+
+    def test_closing_a_debt_no_rung_opens_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("- closes: D1", "- closes: D9"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "R4 closes `D9`, which no rung opens" in result.report
+
+    def test_the_declared_closer_must_be_the_rung_that_closes(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text()
+            .replace("- closes: D1\n", "")
+            .replace(
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration",
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration\n- closes: D1",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "`D1` declares R4 closes it, but R3 does" in result.report
+
+    def test_the_declared_closer_is_checked_against_every_rung_that_closes(
+        self, paper, run_in
+    ):
+        # Two rungs close D1 and neither is the declared one, so the ladder is
+        # wrong twice over — and the second finding must not vanish behind the
+        # first.
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text()
+            .replace("- closes: D1\n", "")
+            .replace("- restates: R4", "- restates: R4\n- closes: D1")
+            .replace(
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration",
+                "- establishes: the procedures are reproducible from the committed"
+                " configuration\n- closes: D1",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "`D1` is closed twice, by R1 and R3" in result.report
+        assert "`D1` declares R4 closes it, but R1 and R3 do" in result.report
+
+    def test_a_declared_closer_that_is_not_a_rung_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("(closed by R4)", "(closed by R9)"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert (
+            "`D1` declares R9 closes it, which is not a rung in this ladder"
+            in result.report
+        )
+
+    def test_a_restated_rung_that_does_not_exist_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("- restates: R4", "- restates: R9"))
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert "R1 restates R9, which is not a rung in this ladder" in result.report
+
+    def test_an_unclosed_debt_still_circulates_and_refuses_submission(
+        self, paper, run_in
+    ):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(spine.read_text().replace("- closes: D1\n", ""))
+
+        circulated = run_in(where, "MANUSCRIPT.working.md", "--circulate")
+        submitted = run_in(where, "MANUSCRIPT.working.md", "--submit")
+
+        assert circulated.exit_code == 1
+        assert "## Results and discussion" in circulated.document
+        assert submitted.exit_code == 1
+        assert submitted.document == ""
+        assert (
+            "chain bookkeeping: `D1` is opened by R2 and never closed"
+            in submitted.report
+        )
+
+
+class TestDebtPrecedence:
+    """Every debt is opened in a unit no later than the unit that closes it, or
+    the reader meets the payoff before the promise."""
+
+    def test_a_debt_closed_before_it_is_opened_fails_the_gate(self, paper, run_in):
+        where = paper("clean")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text()
+            .replace("- restates: R4", "- restates: R4\n- closes: D2")
+            .replace(
+                "- closes: D1",
+                "- closes: D1\n- opens: D2 (closed by R1) — whether the drift is bounded",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 1
+        assert (
+            "`D2` is opened in `results` and closed in `abstract`, which the "
+            "skeleton reads first" in result.report
+        )
+        assert rows_of(result.report)["chain bookkeeping"] == PASS
+
+    def test_precedence_is_the_skeletons_order_and_not_the_ladders(self, paper, run_in):
+        # The abstract is the ladder's *last* rung and the document's *first*
+        # unit. A debt it opens and a later unit closes respects the reading
+        # order, and reading order is what the reader meets the promise in.
+        where = paper("load-bearing-methods")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text()
+            .replace("- closes: D1", "- closes: D1\n- closes: D2")
+            .replace(
+                "- restates: R2",
+                "- restates: R2\n- opens: D2 (closed by R2) — whether one pixel is"
+                " enough",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 0
-        assert "FAIL" not in result.report
+        assert rows_of(result.report)["debt precedence"] == PASS
 
-    def test_a_reported_row_never_gates_submission(self, render):
-        result = render("brief-mirror", "MANUSCRIPT.working.md", "--submit")
-
-        assert result.exit_code == 0
-        assert result.document.startswith("---\ngenerated-by: render-paper")
-        assert "refused" not in result.report
-
-    def test_a_reported_row_is_neither_a_pass_nor_a_fail_in_the_counts(
+    def test_a_restating_rung_ahead_of_what_it_restates_is_not_a_precedence_failure(
         self, render
     ):
-        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+        # The clean fixture's abstract restates R4 and sits first. `restates`
+        # carries no precedence: an abstract restates what the paper has not
+        # said yet, which is what an abstract is for.
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
 
-        assert "6 pass, 0 fail, 0 out of scope, 2 reported" in result.report
+        assert result.exit_code == 0
+        assert rows_of(result.report)["debt precedence"] == PASS
 
-    def test_no_row_of_this_tier_names_a_threshold_or_a_verdict(self, render):
-        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
 
-        rows = _rows(result.report)
+class TestTheWalkReadsTheDeclaredRelation:
+    """The walk reads the declared relation and never the section type, or it
+    false-fails on the paper's load-bearing claim."""
 
-        for name in ("brief-to-prose overlap", "paragraphs (originating)"):
-            assert "threshold" not in rows[name]
-            assert PASS not in rows[name]
-            assert "FAIL" not in rows[name]
+    def test_a_load_bearing_claim_carried_by_methods_passes(self, render):
+        result = render("load-bearing-methods", "MANUSCRIPT.working.md", "--check")
 
+        assert result.exit_code == 0
+        assert rows_of(result.report)["chain bookkeeping"] == PASS
+        assert rows_of(result.report)["debt precedence"] == PASS
+
+    def test_a_unit_bearing_children_closes_a_debt(self, render):
+        # `results` closes D1 and carries two child slots. Debts are opened and
+        # closed by units, so there is no debt edge inside a unit and nothing
+        # for the walk to look at there.
+        result = render("load-bearing-methods", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert rows_of(result.report)["originating slot children"] == PASS
+
+    def test_a_rung_naming_a_child_slot_is_the_pairings_finding_not_the_walks(
+        self, paper, run_in
+    ):
+        where = paper("load-bearing-methods")
+        spine = where / "spine.md"
+        spine.write_text(
+            spine.read_text().replace("### R2 — results", "### R2 — results-accuracy")
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 2
+        assert "R2 names `results-accuracy`, which is not a unit" in result.report
+        assert rows_of(result.report)["chain bookkeeping"] == PASS
+        assert rows_of(result.report)["debt precedence"] == PASS
+
+    def test_the_two_rows_are_out_of_scope_at_section_granularity(self, render):
+        result = render(
+            "clean", "MANUSCRIPT.working.md", "--check", "--section", "methods"
+        )
+
+        assert rows_of(result.report)["chain bookkeeping"] == SKIPPED
+        assert rows_of(result.report)["debt precedence"] == SKIPPED
+
+
+class TestTheLocalityTest:
+    """The locality test is mechanically decidable from the two files, which is
+    what makes it a check rather than a habit. It reports; it never gates."""
+
+    def test_the_row_carries_numbers_and_never_a_verdict(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        reported = rows_of(result.report)["locality test"]
+
+        assert reported.startswith("4 units")
+        assert PASS not in reported
+        assert "FAIL" not in reported
+
+    def test_it_names_the_edges_that_escalate(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        reported = rows_of(result.report)["locality test"]
+
+        assert "`D1` introduction→results" in reported
+        assert "abstract restates results" in reported
+
+    def test_a_reported_row_never_changes_the_exit_code(self, render):
+        result = render("clean", "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "0 fail" in result.report
+        assert rows_of(result.report)["locality test"].startswith("4 units")
+
+    def test_it_is_out_of_scope_at_section_granularity(self, render):
+        result = render(
+            "clean", "MANUSCRIPT.working.md", "--check", "--section", "methods"
+        )
+
+        assert rows_of(result.report)["locality test"] == SKIPPED
 
 class TestTheOverlapInstrument:
     """The instrument that catches prose mirroring its own brief. The zone the
     shared span came from decides which instrument applies to it."""
 
+    OVERLAP = "brief-to-prose overlap"
+
+    def test_the_table_is_verbatim(self, render, golden):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+
+        assert result.report == golden("brief-mirror-check.txt")
+
     def test_a_phrase_shared_with_the_argument_zone_is_flagged(self, render):
         result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
 
-        assert 'results: "Registration accuracy is credible on a metric' in result.report
+        assert 'results: "Registration accuracy is credible on a metric' in (
+            rows_of(result.report)[self.OVERLAP]
+        )
+
+    def test_the_row_carries_numbers_and_no_verdict(self, render):
+        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
+        row = rows_of(result.report)[self.OVERLAP]
+
+        assert row.startswith("4 flagged, 1 expected")
+        assert PASS not in row
+        assert "FAIL" not in row
+        assert "threshold" not in row
+
+    def test_it_changes_no_exit_code_and_gates_no_submission(self, render):
+        # Every paragraph of the fixture's originating unit is transcribed from
+        # its brief. Nothing about that is a gate.
+        for mode in ("--check", "--submit"):
+            result = render("brief-mirror", "MANUSCRIPT.working.md", mode)
+
+            assert result.exit_code == 0
 
     def test_the_brief_is_a_declared_input_at_the_paper_root(self, paper, run_in):
         where = paper("brief-mirror")
@@ -980,12 +1535,14 @@ class TestTheOverlapInstrument:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 0
-        assert "no brief for `results`" in result.report
+        assert "no brief for `results`" in rows_of(result.report)[self.OVERLAP]
 
     def test_an_absent_brief_is_said_rather_than_counted_as_nothing(self, render):
         result = render("unfilled-slot", "MANUSCRIPT.working.md", "--check")
 
-        assert "no brief for `abstract`, `results`" in result.report
+        assert rows_of(result.report)[self.OVERLAP] == (
+            "0 flagged, 0 expected — no brief for `abstract`, `results`"
+        )
 
     def test_a_zone_this_parser_does_not_know_is_reported_not_raised(
         self, paper, run_in
@@ -997,7 +1554,7 @@ class TestTheOverlapInstrument:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 0
-        assert "unparsed zone `## Propositions`" in result.report
+        assert "unparsed zone `## Propositions`" in rows_of(result.report)[self.OVERLAP]
 
     def test_a_brief_with_no_reader_facing_zone_is_reported_too(self, paper, run_in):
         where = paper("brief-mirror")
@@ -1007,7 +1564,40 @@ class TestTheOverlapInstrument:
         result = run_in(where, "MANUSCRIPT.working.md", "--check")
 
         assert result.exit_code == 0
-        assert "no `## Argument` or `## Inventory` zone" in result.report
+        assert "no `## Argument` or `## Inventory` zone" in (
+            rows_of(result.report)[self.OVERLAP]
+        )
+
+    def test_a_brief_that_cannot_be_read_at_all_is_reported_not_raised(
+        self, paper, run_in
+    ):
+        where = paper("brief-mirror")
+        (where / "briefs" / "results.md").write_bytes(
+            b"# Brief\n\n## Argument\n\xff\xfe\n"
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "Traceback" not in result.report
+        assert "results.md: cannot be read" in rows_of(result.report)[self.OVERLAP]
+
+    def test_only_a_reader_facing_zone_is_measured(self, paper, run_in):
+        # `## Must not claim` is an instruction, and an instruction reaching
+        # the prose verbatim is a different defect with a different owner.
+        where = paper("brief-mirror")
+        source = where / "MANUSCRIPT.working.md"
+        source.write_text(
+            source.read_text().replace(
+                "The figure\nreports that metric for every arm.",
+                "Any head-to-head performance win over a named tool is out of scope.",
+            )
+        )
+
+        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+
+        assert result.exit_code == 0
+        assert "head-to-head performance win" not in result.report
 
     def test_the_span_is_quoted_as_the_prose_wrote_it(self, paper, run_in):
         # What the author has to go and find is the phrase, so the row prints
@@ -1028,38 +1618,21 @@ class TestTheOverlapInstrument:
             )
         )
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "availability")
-
-        assert 'availability: "Every stage runs under Nextflow >= 25.04.0"' in result.report
-
-    def test_a_brief_that_cannot_be_read_at_all_is_reported_not_raised(
-        self, paper, run_in
-    ):
-        where = paper("brief-mirror")
-        (where / "briefs" / "results.md").write_bytes(b"# Brief\n\n## Argument\n\xff\xfe\n")
-
-        result = run_in(where, "MANUSCRIPT.working.md", "--check")
-
-        assert result.exit_code == 0
-        assert "Traceback" not in result.report
-        assert "results.md: cannot be read" in result.report
-
-    def test_only_a_reader_facing_zone_is_measured(self, paper, run_in):
-        # `## Must not claim` is an instruction, and an instruction reaching
-        # the prose verbatim is a different defect with a different owner.
-        where = paper("brief-mirror")
-        source = where / "MANUSCRIPT.working.md"
-        source.write_text(
-            source.read_text().replace(
-                "The figure\nreports that metric for every arm.",
-                "Any head-to-head performance win over a named tool is out of scope here.",
-            )
+        result = run_in(
+            where, "MANUSCRIPT.working.md", "--check", "--section", "availability"
         )
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--check")
+        assert 'availability: "Every stage runs under Nextflow >= 25.04.0"' in (
+            rows_of(result.report)[self.OVERLAP]
+        )
 
-        assert result.exit_code == 0
-        assert "head-to-head performance win" not in result.report
+    def test_the_row_is_per_unit_and_so_never_out_of_scope(self, render):
+        for granularity in ([], ["--section", "results"]):
+            result = render(
+                "brief-mirror", "MANUSCRIPT.working.md", "--check", *granularity
+            )
+
+            assert rows_of(result.report)[self.OVERLAP] != SKIPPED
 
 
 class TestTheFiniteVerbTest:
@@ -1067,18 +1640,23 @@ class TestTheFiniteVerbTest:
     expected — unless it predicates, which is the drafter transcribing or the
     brief author slipping into phrasing."""
 
+    OVERLAP = "brief-to-prose overlap"
+
     def test_a_shared_inventory_span_with_a_finite_verb_is_flagged(self, render):
         result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
 
-        assert 'availability: "The container image is freely available' in result.report
+        assert 'availability: "The container image is freely available' in (
+            rows_of(result.report)[self.OVERLAP]
+        )
 
     def test_a_shared_inventory_span_with_no_finite_verb_is_expected(self, render):
         result = render(
             "brief-mirror", "MANUSCRIPT.working.md", "--check", "--section", "availability"
         )
+        row = rows_of(result.report)[self.OVERLAP]
 
-        assert "1 flagged, 1 expected" in result.report
-        assert "container digest" not in result.report
+        assert row.startswith("1 flagged, 1 expected")
+        assert "container digest" not in row
 
     def test_a_third_person_present_verb_is_a_finite_verb(self, paper, run_in):
         # The corpus's own flagged inventory span: `suppresses` is the whole
@@ -1099,9 +1677,11 @@ class TestTheFiniteVerbTest:
             )
         )
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "availability")
+        result = run_in(
+            where, "MANUSCRIPT.working.md", "--check", "--section", "availability"
+        )
 
-        assert "2 flagged, 0 expected" in result.report
+        assert rows_of(result.report)[self.OVERLAP].startswith("2 flagged, 0 expected")
 
     def test_a_plural_noun_closing_an_item_is_not_a_finite_verb(self, paper, run_in):
         # The failure to avoid: an instrument that reads every plural as a verb
@@ -1123,30 +1703,38 @@ class TestTheFiniteVerbTest:
             )
         )
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "availability")
+        result = run_in(
+            where, "MANUSCRIPT.working.md", "--check", "--section", "availability"
+        )
 
-        assert "1 flagged, 1 expected" in result.report
+        assert rows_of(result.report)[self.OVERLAP].startswith("1 flagged, 1 expected")
 
 
-class TestParagraphShape:
-    """Both structural measures are suspended for a non-originating unit,
-    because both invert there: order tracking the brief is what a venue's field
-    order mandates, and a panel caption is not a unit of argument."""
+class TestParagraphOrder:
+    """Paragraph order joins the single-sentence row, and is suspended with it
+    for a non-originating unit: order tracking the brief is what a venue's
+    field order and a figure's lettering mandate there."""
 
-    def test_paragraph_order_is_reported_for_an_originating_unit(self, render):
+    PARAGRAPHS = "single-sentence body paragraphs"
+
+    def test_order_is_reported_for_an_originating_unit(self, render):
         result = render(
             "brief-mirror", "MANUSCRIPT.working.md", "--check", "--section", "results"
         )
 
-        assert "brief-order 3 of 3 (results)" in result.report
+        assert "brief-order 3 of 3 (results)" in rows_of(result.report)[self.PARAGRAPHS]
 
     def test_a_non_originating_unit_is_measured_by_neither(self, render, golden):
         result = render(
-            "brief-mirror", "MANUSCRIPT.working.md", "--check", "--section", "availability"
+            "brief-mirror",
+            "MANUSCRIPT.working.md",
+            "--check",
+            "--section",
+            "availability",
         )
 
         assert result.report == golden("brief-mirror-section-check.txt")
-        assert "paragraphs (originating)  no originating unit in scope" in result.report
+        assert rows_of(result.report)[self.PARAGRAPHS] == "0 in 0 originating units"
 
     def test_order_is_reported_against_the_unit_s_own_paragraph_count(
         self, paper, run_in
@@ -1165,9 +1753,11 @@ class TestParagraphShape:
             )
         )
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
+        result = run_in(
+            where, "MANUSCRIPT.working.md", "--check", "--section", "results"
+        )
 
-        assert "brief-order 3 of 5 (results)" in result.report
+        assert "brief-order 3 of 5 (results)" in rows_of(result.report)[self.PARAGRAPHS]
 
     def test_an_originating_unit_carrying_an_inventory_zone_is_still_ordered(
         self, paper, run_in
@@ -1179,24 +1769,11 @@ class TestParagraphShape:
         brief = where / "briefs" / "results.md"
         brief.write_text(brief.read_text().replace("## Argument", "## Inventory"))
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
-
-        assert "brief-order 3 of 3 (results)" in result.report
-
-    def test_a_single_sentence_paragraph_is_attributed_to_its_unit(self, render):
-        result = render("brief-mirror", "MANUSCRIPT.working.md", "--check")
-
-        assert "single-sentence 1 (results ¶2)" in result.report
-
-    def test_a_single_sentence_paragraph_of_a_non_originating_unit_is_not_counted(
-        self, render
-    ):
-        # Both of `availability`'s paragraphs are one sentence long.
-        result = render(
-            "brief-mirror", "MANUSCRIPT.working.md", "--check", "--section", "availability"
+        result = run_in(
+            where, "MANUSCRIPT.working.md", "--check", "--section", "results"
         )
 
-        assert "single-sentence" not in result.report
+        assert "brief-order 3 of 3 (results)" in rows_of(result.report)[self.PARAGRAPHS]
 
     def test_the_ladder_line_is_not_a_proposition(self, paper, run_in):
         # `Opens:` in the argument zone is bookkeeping, so moving it to the top
@@ -1205,28 +1782,44 @@ class TestParagraphShape:
         brief = where / "briefs" / "results.md"
         brief.write_text(
             brief.read_text()
-            .replace("## Argument\nRegistration", "## Argument\nOpens: reproducibility of the pipeline -> R2.\nRegistration")
+            .replace(
+                "## Argument\nRegistration",
+                "## Argument\nOpens: reproducibility of the pipeline -> R2.\nRegistration",
+            )
             .replace("seams.\nOpens: reproducibility of the pipeline -> R2.\n", "seams.\n")
         )
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
+        result = run_in(
+            where, "MANUSCRIPT.working.md", "--check", "--section", "results"
+        )
 
-        assert "brief-order 3 of 3 (results)" in result.report
+        assert "brief-order 3 of 3 (results)" in rows_of(result.report)[self.PARAGRAPHS]
 
-    def test_order_is_not_measured_without_a_brief(self, paper, run_in):
+    def test_an_absent_brief_is_not_reported_twice(self, paper, run_in):
+        # The overlap row above already names every unit with no brief, and two
+        # rows carrying one fact is how the two of them drift.
         where = paper("brief-mirror")
         (where / "briefs" / "results.md").unlink()
 
-        result = run_in(where, "MANUSCRIPT.working.md", "--check", "--section", "results")
+        result = run_in(
+            where, "MANUSCRIPT.working.md", "--check", "--section", "results"
+        )
+        rows = rows_of(result.report)
 
-        assert result.exit_code == 0
-        assert "brief-order not measured (results: no brief)" in result.report
+        assert "no brief for `results`" in rows["brief-to-prose overlap"]
+        assert "brief-order" not in rows[self.PARAGRAPHS]
 
-    def test_both_rows_are_per_unit_and_so_never_out_of_scope(self, render):
-        for granularity in ([], ["--section", "results"]):
-            result = render("brief-mirror", "MANUSCRIPT.working.md", "--check", *granularity)
+    def test_a_brief_stating_no_item_is_said_because_nothing_else_says_it(
+        self, paper, run_in
+    ):
+        where = paper("brief-mirror")
+        brief = where / "briefs" / "results.md"
+        brief.write_text("# Brief — Results\n\n## Argument\n\n## Sources\nCONTEXT.md\n")
 
-            rows = _rows(result.report)
+        result = run_in(
+            where, "MANUSCRIPT.working.md", "--check", "--section", "results"
+        )
 
-            assert SKIPPED not in rows["brief-to-prose overlap"]
-            assert SKIPPED not in rows["paragraphs (originating)"]
+        assert "brief-order not measured (results: the brief states no reader-facing" in (
+            rows_of(result.report)[self.PARAGRAPHS]
+        )
