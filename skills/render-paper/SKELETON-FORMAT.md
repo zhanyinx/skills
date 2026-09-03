@@ -121,6 +121,10 @@ slot:
 <!-- slot: methods -->
 ```
 
+The anchors are not typed by hand: `render-paper <source> --scaffold` seeds a source with every
+anchor in a unit's subtree, in skeleton order, before the drafting session starts, and the session
+writes only between them.
+
 An anchor is an ordinary HTML comment, so it is stripped like every other comment and enters no
 manifest — nobody owes an anchor. A comment whose first token is `slot:` is claiming to be an
 anchor, and one that is not exactly `<!-- slot: <slot id> -->` is a **malformed anchor**: a parse
@@ -152,7 +156,8 @@ The test is mechanically decidable from `skeleton.md` plus `spine.md`, so a draf
 has to judge whether its change is "big".
 
 **Immediate**, and needs no ticket: adding a roster name only this unit references; adding a child
-slot inside the amending session's own subtree.
+slot inside the amending session's own subtree. Re-run `--scaffold` after one: it is idempotent, so
+it adds the new slot's anchor and moves no prose.
 
 **Escalated to a `task` ticket that blocks the draft ticket:** reordering slots, changing an existing
 slot's level, removing a slot, renaming a slot that other prose points at, a figure split another
