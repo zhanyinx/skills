@@ -8,7 +8,7 @@
     {
       "name": "zhanyinx-skills",
       "source": "./",
-      "description": "Skills for academic writing — wayfinding a paper as a map of tickets, drafting sections, reviewing drafts for fidelity and craft, and rendering the document through a mechanical gate.",
+      "description": "Skills for academic writing — wayfinding a paper as a map of tickets, drafting sections, reviewing drafts for fidelity and craft, assembling them into one working manuscript, and rendering the document through a mechanical gate.",
       "category": "writing",
       "keywords": [
         "writing",
@@ -16,6 +16,7 @@
         "academic",
         "paper",
         "wayfinder",
+        "assemble",
         "render"
       ]
     }
