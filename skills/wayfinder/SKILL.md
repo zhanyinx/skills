@@ -37,6 +37,12 @@ The whole map at low resolution, loaded once per session. Open tickets are **not
 
 <domain; skills every session should consult; standing preferences for this effort>
 
+## Style
+
+<voice/terminology/framing rules every draft must follow — inline if short, or a link to a
+style file if long (venue formatting, house terminology, framing conventions). Empty/omit
+if the effort has no drafting tickets.>
+
 ## Decisions so far
 
 <!-- the index — one line per closed ticket: enough to judge relevance, then zoom the link for the detail the ticket holds -->
@@ -80,7 +86,7 @@ Every ticket is either **HITL** — human in the loop, worked *with* a human who
 - **Task** (HITL or AFK): Manual work that must happen before a *decision* can be made — nothing to decide, prototype, or research, but the discussion is blocked until it's done. Signing up for a service so its API can be judged, provisioning access, moving data so its shape can be seen. This is the one type that *does* rather than decides — and it earns its place by unblocking a decision, not by delivering the destination. The agent drives it alone where it can (AFK); otherwise it hands the human a precise checklist (HITL). Resolved when the work is done; the answer records what was done and any resulting facts (credentials location, new URLs, row counts) later tickets depend on.
 - **Draft** (HITL, checkpointed): Produces prose — a section or paragraph-cluster of the piece — via the `/write-paper` skill, sized to one seam as `/write-paper` itself defines it. Valid only when this effort's Notes declare execution in scope (see "Plan, don't do"). The ticket isn't closed on prose alone: run `/review-paper` at the checkpoint first, and only record the ticket resolved once that pass is clean or its findings are addressed. The resolution comment links the drafted text and the review's one-line verdict — not the prose itself, per the map's asset-linking convention. Like any ticket, a `draft` ticket can be blocked by open `task` tickets — e.g. a fact to confirm against code or an external party — that must resolve before the section can be drafted faithfully.
 
-**Whole-piece review.** A `draft` effort should include one `task`-labeled ticket, blocked on every `draft` ticket closing, that runs `/review-paper` over the fully assembled piece rather than a single section — cross-references and cross-section contradictions are a different question than any one section's local check, and only surface once everything is in place.
+**Whole-piece review.** A `draft` effort should include one `task`-labeled ticket, blocked on every `draft` ticket closing, that runs `/assemble-paper` to stitch the sections into one manuscript, then `/review-paper` over the assembled whole rather than a single section — cross-references and cross-section contradictions are a different question than any one section's local check, and only surface once everything is in place.
 
 ## Fog of war
 
@@ -123,7 +129,7 @@ User invokes with a map (URL or number). A ticket is **optional** — without on
 
 1. Load the **map** — the low-res view, not every ticket body.
 2. Choose the ticket. If the user named one, use it. Otherwise take the first frontier ticket in order. **Claim it**: assign it to yourself before any work.
-3. Resolve it — **zoom as needed**: fetch the full body of any related or closed ticket on demand; invoke the skills the `## Notes` block names. If in doubt, use `/grilling` and `/domain-modeling`.
+3. Resolve it — **zoom as needed**: fetch the full body of any related or closed ticket on demand; invoke the skills the `## Notes` block names, and hold every draft to the map's `## Style` section where one exists. If in doubt, use `/grilling` and `/domain-modeling`.
 4. Record the resolution: post the answer as a **resolution comment**, **close** the issue, and **append a context pointer** to the map's Decisions-so-far.
 5. Add newly-surfaced tickets (create-then-wire); graduate any fog the answer has made specifiable, clearing each graduated patch from **Not yet specified** so it lives only as its new ticket. If the answer reveals a ticket — this one or another — sits beyond the destination, **rule it out of scope** rather than resolving it on the route. If the decision invalidates other parts of the map, update or delete those tickets.
 

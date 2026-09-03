@@ -35,10 +35,25 @@ Based on the [wayfinder skill by Matt Pocock](https://github.com/mattpocock), wi
 
 Draft a piece of academic writing — paper section, chapter, grant, or assay/protocol report — from a spec, outline, or set of results/notes, with reference management and consistent cross-referencing. Drafts at pre-agreed seams, never fabricates a citation, and checks fidelity/craft at every checkpoint via `review-paper`.
 
+### assemble-paper
+
+Stitch the independently-drafted sections and figure legends of a manuscript into one continuously-readable document — resolving transitions, redundant seams, and voice/terminology drift between sections — without altering claims, evidence, or citations. Runs once every section draft exists, before the final whole-manuscript `review-paper` pass.
+
 ### review-paper
 
 Review a piece of academic writing since a fixed point along two axes — **Fidelity** (does the text accurately represent its evidence, sources, and literature?) and **Craft** (is the prose clear, non-redundant, correctly hedged?) — plus a direct **cross-reference integrity** check. The two axes run as parallel sub-agents; results are reported side by side.
 
 ## How they fit together
 
-`wayfinder` plans a paper as a map of tickets. Its `draft` tickets call `write-paper` to produce each section, and `review-paper` checks each section at its checkpoint and the whole piece once assembled.
+`wayfinder` plans a paper as a map of tickets. Its `draft` tickets call `write-paper` to produce each section, and `review-paper` checks each section at its checkpoint. Once every section draft has closed, `assemble-paper` stitches them into one manuscript and `review-paper` runs a final pass over the assembled whole.
+
+## Working on these skills
+
+The `SKILL.md` files in this repository are the source of truth: the copies that actually get invoked are symlinks into `skills/`, so an edit committed here is the edit that runs. To create or repair those links on a new machine:
+
+```bash
+scripts/link-skills.sh --dry-run   # show what would change
+scripts/link-skills.sh             # link ~/.agents/skills/<name> -> skills/<name>
+```
+
+It is idempotent, and moves any real directory it finds in place aside to `<name>.pre-link-backup` rather than deleting it.

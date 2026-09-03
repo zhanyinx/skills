@@ -25,6 +25,7 @@ Scan the diff (or full draft) for every internal reference — figures, panels, 
 
 - Every reference resolves to something that actually exists elsewhere in the piece or in the supplied materials (no reference to Fig. 5 if there is no Fig. 5; no panel `c` cited if the figure only has `a`–`b`).
 - Numbering is consistent and sequential where the piece implies it should be (no gaps, no duplicate panel labels, no figure referenced out of the order it's introduced without reason).
+- **First-mention order is strictly ascending.** For numbered citation schemes, citation [2] cannot appear in the text before citation [1] has first been cited — number by order of first mention, not by reference-list position or drafting order. Same rule for figures (Fig. 2 can't be first cited before Fig. 1) and for panels within a figure (panel b can't be first cited before panel a). Flag every violation with the two citation/figure numbers and where each first appears — this is a hard, mechanical rule, not a style judgement.
 - No leftover editing artifacts: stray comment markers (e.g., `[YZ1.1]`), doubled or malformed labels (e.g., `6jk` where `6j,k` was meant, `6k-ll`), or citation placeholders that were never filled in.
 - Citation-key consistency: the same source is cited under the same key/format throughout, and every in-text citation has a corresponding entry in the reference list (and vice versa — no orphaned bibliography entries, no citations missing from it).
 
@@ -51,7 +52,7 @@ This is a required action, not a passive smell to note in passing. For every cit
 
 ### 5. Identify the craft sources
 
-Anything the piece documents about its own style: a house style guide, journal author guidelines, grant-funder formatting rules, a style note from the user, or prior chapters/sections establishing the voice and terminology to match.
+Anything the piece documents about its own style: if this review is over a wayfinder-tracked piece, check the map's `## Style` section first — it's the authoritative source and overrides inferring style from context alone. Otherwise, a house style guide, journal author guidelines, grant-funder formatting rules, a style note from the user, or prior chapters/sections establishing the voice and terminology to match.
 
 On top of whatever is documented, the Craft axis always carries the **prose smell baseline** below. Two rules bind it:
 
@@ -70,6 +71,8 @@ Each smell reads *what it is* → *how to fix*; match it against the draft:
 - **Redundant Restatement** — a clause or sentence repeats a point already made without adding precision. → cut, or merge into the earlier statement.
 - **Scope Creep** — content appears that wasn't called for by the outline/spec and isn't load-bearing for the argument. → cut, or flag for a "future work" pointer.
 - **Passive Obfuscation** — passive voice or a nominalization hides who or what is doing the acting, where the actor matters for clarity. → make the actor explicit.
+- **Meta-narration / Signposting** — a sentence describes the text's own structural role ("this is described in the next section," "here we establish...") instead of just making the point the paragraph exists to make. → cut the narration; let the content carry the motivation directly, with no stage direction.
+- **Em Dash** — an em dash stands in for a comma, colon, or sentence break. → replace with the punctuation the sentence actually calls for, or split into two sentences.
 
 ### 6. Spawn both sub-agents in parallel
 
