@@ -1,7 +1,7 @@
 """The helpers that read a shipped `SKILL.md` have their own failure mode.
 
 A skill's headings and the headings inside a template it ships for copying are
-the same characters on the page. `wayfinder` really does carry `## Out of scope`
+the same characters on the page. `charting` really does carry `## Out of scope`
 in its map-body template ninety lines above its own section of that name, so a
 helper that finds a section by plain string search silently returns the
 template's copy — and every assertion made against that span is then asserting

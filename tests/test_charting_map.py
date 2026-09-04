@@ -1,4 +1,4 @@
-"""The map `wayfinder` charts is read by skills `wayfinder` knows nothing about.
+"""The map `charting` charts is read by skills `charting` knows nothing about.
 
 That split is the whole hazard. A section can be read by three skills, shipped
 as a slot by a fourth, and written by none — which is what happened: a framing
@@ -6,9 +6,9 @@ rule sat in a real map's `## Notes` while every skill that could have enforced
 it looked under `## Style`, and the frame it banned was denied seven times in
 seven independent sections with nothing detecting it.
 
-These tests hold the half of the closure `wayfinder` owns. Charting
+These tests hold the half of the closure `charting` owns. Charting
 **instantiates every declared section**, so a reader always has a state to
-announce; and the slot `wayfinder` ships carries no domain vocabulary, so the
+announce; and the slot `charting` ships carries no domain vocabulary, so the
 key set keeps exactly one home. The rest pin the two things a map cannot get
 wrong once it carries execution: what its blocking edges mean, and what its
 index is allowed to assert.
@@ -28,9 +28,9 @@ import pytest
 from shipped_text import MARKDOWN_BLOCK, SECTION, STYLE_KEYS, section_of, slot_of
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-WAYFINDER = REPO_ROOT / "skills" / "wayfinder" / "SKILL.md"
+CHARTING = REPO_ROOT / "skills" / "charting" / "SKILL.md"
 
-# Sections a domain skill declares. `wayfinder` names none of them when it
+# Sections a domain skill declares. `charting` names none of them when it
 # states the requirement, because naming one is how a domain-agnostic skill
 # starts carrying a domain.
 DOMAIN_SECTIONS = ("Spine", "Skeleton")
@@ -41,7 +41,7 @@ TWO_MAP = "### The two-map pattern (for efforts that carry execution)"
 
 @pytest.fixture(scope="module")
 def skill():
-    return WAYFINDER.read_text()
+    return CHARTING.read_text()
 
 
 @pytest.fixture(scope="module")
@@ -77,7 +77,7 @@ class TestChartingInstantiatesEveryDeclaredSection:
 
 
 class TestTheGenericMapBodySentence:
-    """`wayfinder` owns the requirement; the domain skill owns the template
+    """`charting` owns the requirement; the domain skill owns the template
     and the contents. The sentence stating that must name no domain section,
     or it is contradicted by its own wording."""
 
@@ -93,7 +93,7 @@ class TestTheGenericMapBodySentence:
 
         assert [name for name in DOMAIN_SECTIONS if name in statement] == []
 
-    def test_the_domain_skill_owns_the_templates_and_wayfinder_the_requirement(
+    def test_the_domain_skill_owns_the_templates_and_charting_the_requirement(
         self, skill
     ):
         body = section_of(skill, "### The map body")
@@ -105,7 +105,7 @@ class TestTheGenericMapBodySentence:
 
 
 class TestTheStyleSlot:
-    """The slot `wayfinder` ships. Its text is one line, deliberately: the key
+    """The slot `charting` ships. Its text is one line, deliberately: the key
     set, its value domains and its composition rules live in the drafting
     skill's schema, in exactly one place."""
 
@@ -145,7 +145,7 @@ class TestTheStyleSlot:
 class TestDraftsAreHeldToStyleUnconditionally:
     """Under charting the section always exists when declared, so the hedge
     that let a drafting session skip it has nothing left to hedge against —
-    and while it stood, `wayfinder` and the drafting skill disagreed about
+    and while it stood, `charting` and the drafting skill disagreed about
     whether `## Style` was optional or overriding."""
 
     def test_the_where_one_exists_hedge_is_gone(self, skill):

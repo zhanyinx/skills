@@ -25,11 +25,11 @@ Or add it as an auto-updating Claude Code plugin marketplace:
 
 ## Skills
 
-### wayfinder
+### charting
 
 Plan a huge chunk of work — more than one agent session can hold — as a shared map of investigation tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear.
 
-Based on the [wayfinder skill by Matt Pocock](https://github.com/mattpocock), with one addition: a **`draft` ticket type** and the surrounding "Plan, don't do" override that lets a map carry execution — not just decisions — for academic writing efforts. A `draft` ticket plans, then produces prose via `write-paper`, checkpoints it through `review-paper`, and a whole-piece `review-paper` pass runs once every section is assembled. This connects wayfinding to the two paper skills below.
+Based on the [wayfinder skill by Matt Pocock](https://github.com/mattpocock), with one addition: a **`draft` ticket type** and the surrounding "Plan, don't do" override that lets a map carry execution — not just decisions — for academic writing efforts. A `draft` ticket plans, then produces prose via `write-paper`, checkpoints it through `review-paper`, and a whole-piece `review-paper` pass runs once every section is assembled. This connects charting to the two paper skills below.
 
 ### write-paper
 
@@ -61,7 +61,7 @@ It holds every mechanical duty and no prose judgement, so no two skills can disa
 
 ## How they fit together
 
-`wayfinder` plans a paper as a map of tickets. Its `draft` tickets call `write-paper` to produce each section, and `review-paper` checks each section at its checkpoint. Once every draft has closed, `assemble-paper` runs once — it promotes the sections into the working manuscript and makes the whole-document editorial pass — and `review-paper` then runs over the assembled whole. `render-paper` is what all four call for anything mechanical: it builds the document and runs the gate, and its exit code is the one refusal authority.
+`charting` plans a paper as a map of tickets. Its `draft` tickets call `write-paper` to produce each section, and `review-paper` checks each section at its checkpoint. Once every draft has closed, `assemble-paper` runs once — it promotes the sections into the working manuscript and makes the whole-document editorial pass — and `review-paper` then runs over the assembled whole. `render-paper` is what all four call for anything mechanical: it builds the document and runs the gate, and its exit code is the one refusal authority.
 
 ## Tests
 

@@ -1,7 +1,7 @@
 {
   "name": "zhanyinx-skills",
   "version": "0.1.0",
-  "description": "Skills for academic writing — wayfinding a paper as a map of tickets, drafting sections, reviewing drafts for fidelity and craft, assembling them into one working manuscript, and rendering the document through a mechanical gate.",
+  "description": "Skills for academic writing — charting a paper as a map of tickets, drafting sections, reviewing drafts for fidelity and craft, assembling them into one working manuscript, and rendering the document through a mechanical gate.",
   "author": {
     "name": "Yinxiu Zhan"
   },
@@ -12,13 +12,13 @@
     "skills",
     "academic",
     "paper",
-    "wayfinder",
+    "charting",
     "review",
     "assemble",
     "render"
   ],
   "skills": [
-    "./skills/wayfinder",
+    "./skills/charting",
     "./skills/write-paper",
     "./skills/review-paper",
     "./skills/assemble-paper",

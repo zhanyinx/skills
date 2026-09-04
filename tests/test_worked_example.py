@@ -176,7 +176,7 @@ OWNED_ELSEWHERE = {
     "3": "rationale leak — `write-paper` constructs, `review-paper` re-derives",
     "4": "paragraphs mirror brief bullets — `write-paper`; measured here, never gated",
     "5": "flat rhythm — a blocking em-dash count, and diagnostics that never gate",
-    "6a": "silent content loss at revision — `wayfinder`, plus the supersession diff",
+    "6a": "silent content loss at revision — `charting`, plus the supersession diff",
     "6b": "callbacks are meta-narration — `write-paper` makes the container illegal",
     "6d": "the clean manuscript is not regenerable — two files, and the render is `f(source)`",
 }
@@ -559,7 +559,7 @@ class TestTheClassesAnotherUnitOwns:
 
     def test_the_supersession_diff_reports_and_never_gates(self, render):
         """`6a`: the row landed with its own ticket, and it stays owned
-        elsewhere — `wayfinder` makes `revise` a type with a mechanical
+        elsewhere — `charting` makes `revise` a type with a mechanical
         discriminator, and the row is the drop-guard beside it, **a finding
         rather than a gate.**
 
