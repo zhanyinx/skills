@@ -399,7 +399,7 @@ Two facts a session should know before it starts, both measured on a real sectio
 - [`BRIEF-FORMAT.md`](BRIEF-FORMAT.md) — the two brief formats, the axis that chooses between them,
   and what a brief may not contain. `render-paper` parses a brief; this skill owns its format.
 - [`MAP-SECTIONS.md`](MAP-SECTIONS.md) — the `## Style`, `## Spine` and `## Skeleton` map-section
-  templates. `wayfinder` owns only the requirement that a declared section is instantiated; the
+  templates. `charting` owns only the requirement that a declared section is instantiated; the
   domain skill owns the templates, and this skill is the only unit that reads all three.
 - [`STYLE-STANZA.md`](STYLE-STANZA.md) — the style stanza's keyed schema and its values-blank
   exemplar. The map-section template names no key, so this is the key set's one home.

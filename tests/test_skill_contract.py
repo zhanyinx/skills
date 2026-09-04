@@ -55,7 +55,7 @@ SKILLS = REPO_ROOT / "skills"
 
 # The five units, in pipeline order: plan, draft, assemble, review, and the one
 # that renders and checks for all of them.
-UNITS = ("wayfinder", "write-paper", "assemble-paper", "review-paper", "render-paper")
+UNITS = ("charting", "write-paper", "assemble-paper", "review-paper", "render-paper")
 
 # A top-level bullet's bold label, which is how every list the spec fixes as a
 # closed set names its members.
@@ -517,7 +517,7 @@ class TestCleanIsNeverAnOutputToken:
         across the pipeline, and a skill that never mentions it leaves a
         session free to invent it — so the three skills whose output could
         carry a verdict say there is none."""
-        for unit in ("wayfinder", "write-paper", "review-paper"):
+        for unit in ("charting", "write-paper", "review-paper"):
             assert "CLEAN" in shipped(unit), unit
 
     def test_the_verdict_vocabulary_is_the_gate_report_only(self):
@@ -611,8 +611,8 @@ class TestTheSettledVocabularyIsUsedVerbatim:
     OBLIGED = {
         "unit": UNITS,
         "slot": UNITS,
-        "rung": ("wayfinder", "write-paper", "render-paper"),
-        "debt": ("wayfinder", "write-paper", "review-paper", "render-paper"),
+        "rung": ("charting", "write-paper", "render-paper"),
+        "debt": ("charting", "write-paper", "review-paper", "render-paper"),
         "spine": ("write-paper", "assemble-paper", "render-paper"),
         "claim ladder": ("write-paper", "review-paper", "render-paper"),
         "argument brief": ("write-paper", "render-paper"),
@@ -668,7 +668,7 @@ class TestTheSettledVocabularyIsUsedVerbatim:
         """Stated rather than skipped, the same way the slot exemption is.
         `review-paper` names `SILENT` alone because SILENT is the only class it
         may create — naming the other two would describe an authority it does
-        not have. `wayfinder` names none: it plans, and never touches a source.
+        not have. `charting` names none: it plans, and never touches a source.
         If either ever gains channel authority, the test above starts applying
         and this one says why it did not before."""
         partial = {
@@ -677,7 +677,7 @@ class TestTheSettledVocabularyIsUsedVerbatim:
             if unit not in self.TOUCHES_THE_CHANNEL
         }
 
-        assert partial == {"review-paper": ["SILENT"], "wayfinder": []}
+        assert partial == {"review-paper": ["SILENT"], "charting": []}
         assert "SILENT annotations only" in collapsed(shipped("review-paper"))
 
     def test_the_unit_definition_does_not_drift_between_vocabularies(self):
@@ -785,13 +785,13 @@ class TestTheSlotCollisionIsQualified:
         assert "not a position in the heading tree" in boundaries
 
     def test_the_units_that_cannot_be_bitten_are_the_two_without_annotations(self):
-        """Stated rather than skipped. `review-paper` and `wayfinder` use only
+        """Stated rather than skipped. `review-paper` and `charting` use only
         the heading-tree sense, so they owe no qualification — and if either
         ever gains an annotation brace, the test above starts applying to it and
         this one says why."""
         exempt = [unit for unit in UNITS if not self.carries_both_senses(unit)]
 
-        assert exempt == ["wayfinder", "review-paper"]
+        assert exempt == ["charting", "review-paper"]
 
 
 class TestTheTierTwoInvariantsHaveOneSet:
@@ -885,8 +885,8 @@ class TestTheTierTwoInvariantsHaveOneSet:
         assert "Not overridable" in restated
 
 
-class TestTheRulesWayfinderRestates:
-    """`wayfinder` restates three rules that are owned elsewhere, because a
+class TestTheRulesChartingRestates:
+    """`charting` restates three rules that are owned elsewhere, because a
     skill may not read another skill's directory and a ticket type has to state
     its own closing condition. The abolished `CLEAN` verdict is one, asserted
     above over all five files. These are the other two."""
@@ -897,7 +897,7 @@ class TestTheRulesWayfinderRestates:
         Reviewing the source is how six sections once passed a per-section
         checkpoint while carrying 37 annotation markers between them — the
         reviewer read the brackets as scaffolding."""
-        for unit in ("wayfinder", "write-paper"):
+        for unit in ("charting", "write-paper"):
             assert "the render, not the annotated source" in collapsed(shipped(unit)), unit
         assert "reads the render, never the annotated source" in collapsed(
             shipped("review-paper")
@@ -906,9 +906,9 @@ class TestTheRulesWayfinderRestates:
     def test_the_three_dispositions_agree_across_both_owners(self):
         """A finding leaves a review in one of three states, and the fourth —
         saying nothing — is the one the rule exists to close. `review-paper`
-        owns the states; `wayfinder` owns when the ticket may close on them, so
+        owns the states; `charting` owns when the ticket may close on them, so
         both name the same three."""
-        for unit in ("wayfinder", "review-paper"):
+        for unit in ("charting", "review-paper"):
             text = collapsed(shipped(unit))
             assert "fixed" in text, unit
             assert "written back as a `!` annotation" in text, unit
@@ -916,9 +916,9 @@ class TestTheRulesWayfinderRestates:
             assert "Silence is not a disposition" in text, unit
 
     def test_the_closing_condition_is_zero_gate_fails(self):
-        """The half only `wayfinder` states: a diff-clean judgement can never
+        """The half only `charting` states: a diff-clean judgement can never
         again close a ticket over a unit the gate refuses."""
-        assert "zero FAILs" in collapsed(shipped("wayfinder"))
+        assert "zero FAILs" in collapsed(shipped("charting"))
 
 
 class TestNoHouseStyleShipsInAnySkillFile:

@@ -7,7 +7,7 @@ produced by the skeleton planning ticket and is a settled input to every draftin
 `render-paper` is its only parser, which is why the format is documented here, beside the code that
 reads it.
 
-**No skill owns this file.** A wayfinder planning ticket creates it as its linked asset. A drafting
+**No skill owns this file.** A charting planning ticket creates it as its linked asset. A drafting
 session may amend **its own slot only**. Anything that touches another slot, or the order or levels
 of the tree, files a `task` ticket that blocks the draft ticket — see *Amendment* below.
 

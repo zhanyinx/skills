@@ -44,7 +44,7 @@ BRIEF_ZONES = READER_FACING + (
 # `## Style`'s map-section template may name none of the style keys: the key
 # set has one home, and a domain-agnostic map template that enumerated it would
 # be the second. `STYLE_KEYS` is imported rather than transcribed for the same
-# reason — this module and the `wayfinder` one both assert against it.
+# reason — this module and the `charting` one both assert against it.
 
 
 def brief_templates():

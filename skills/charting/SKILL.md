@@ -1,16 +1,16 @@
 ---
-name: wayfinder
+name: charting
 description: Plan a huge chunk of work — more than one agent session can hold — as a shared map of investigation tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear.
 disable-model-invocation: true
 ---
 
-A loose idea has arrived — too big for one agent session, and wrapped in fog: the way from here to the **destination** isn't visible yet. Wayfinding is about finding that way, not charging at the destination. This skill charts the way as a **shared map** on the repo's issue tracker, then works its tickets one at a time until the route is clear.
+A loose idea has arrived — too big for one agent session, and wrapped in fog: the way from here to the **destination** isn't visible yet. Charting is about finding that way, not charging at the destination. This skill charts the way as a **shared map** on the repo's issue tracker, then works its tickets one at a time until the route is clear.
 
 The destination varies per effort, and naming it is the first act of charting — it shapes every ticket. It might be a spec to hand off and iterate on, a decision to lock before planning starts, or a change made in place like a data-structure migration. The map is domain-agnostic — engineering work, course content, whatever fits the shape.
 
 ## Plan, don't do
 
-Wayfinder is **planning** by default: each ticket resolves a decision, and the map is done when the way is clear — nothing left to decide before someone goes and does the thing. The pull to just do the work is usually the signal you've reached the edge of the map and it's time to hand off. An effort can override this in its **Notes** — carrying execution into the map itself — e.g. a manuscript-drafting effort using `draft` and `revise` tickets. Absent that override, produce decisions, not deliverables.
+Charting is **planning** by default: each ticket resolves a decision, and the map is done when the way is clear — nothing left to decide before someone goes and does the thing. The pull to just do the work is usually the signal you've reached the edge of the map and it's time to hand off. An effort can override this in its **Notes** — carrying execution into the map itself — e.g. a manuscript-drafting effort using `draft` and `revise` tickets. Absent that override, produce decisions, not deliverables.
 
 ## Refer by name
 
@@ -18,13 +18,13 @@ Every map and ticket is an issue, so it has a **name** — its title. In everyth
 
 ## The Map
 
-The map is a single issue on this repo's issue tracker, labelled `wayfinder:map` — the canonical artifact. Its tickets are child issues of the map.
+The map is a single issue on this repo's issue tracker, labelled `charting:map` — the canonical artifact. Its tickets are child issues of the map.
 
 The map is an **index**, not a store. It lists the decisions made and points at the tickets that hold their detail; a decision lives in exactly one place — its ticket — so the map never restates it, only gists it and links.
 
 **The map records decisions, never recomputable state.** Anything that is a function of the artifacts as they stand — a verdict, a count, a check that two lists still correspond — is re-runnable in a second, so it is not recorded here at all. **Asserting a *document property* in the map is banned outright**: nothing revalidates a recorded property, so it goes stale in silence, in the one view every session reads while it is orienting. A real map recorded two such properties as settled fact and both were false.
 
-**Where the map, its child tickets, blocking, and frontier queries physically live is tracker-specific.** The issue tracker should have been provided to you — run `/setup-matt-pocock-skills` if not. Consult the tracker doc's "Wayfinding operations" section for how _this_ repo expresses them. If no tracker has been provided, default to the local-markdown tracker.
+**Where the map, its child tickets, blocking, and frontier queries physically live is tracker-specific.** The issue tracker should have been provided to you — run `/setup-matt-pocock-skills` if not. Consult the tracker doc's "Charting operations" section for how _this_ repo expresses them. If no tracker has been provided, default to the local-markdown tracker.
 
 ### The map body
 
@@ -60,7 +60,7 @@ The whole map at low resolution, loaded once per session. Open tickets are **not
 <!-- see "Out of scope": work ruled beyond the destination; closed, never graduates -->
 ```
 
-A map may carry additional `##` sections required by the domain skill its `## Notes` names. The domain skill owns their templates and their contents; wayfinder owns only the requirement that a declared section is instantiated.
+A map may carry additional `##` sections required by the domain skill its `## Notes` names. The domain skill owns their templates and their contents; charting owns only the requirement that a declared section is instantiated.
 
 `## Style` is the one such section shipped by name above, because holding every draft to it is a step in this skill's own loop. An effort with no drafting tickets has no domain skill declaring it and leaves it out.
 
@@ -74,7 +74,7 @@ Each ticket is a **child issue** of the map; the tracker's issue id is its ident
 <the decision or investigation this ticket resolves>
 ```
 
-Each ticket carries a `wayfinder:<type>` label — one of `research`, `prototype`, `grilling`, `task`, `draft`, `revise` (see [Ticket Types](#ticket-types)).
+Each ticket carries a `charting:<type>` label — one of `research`, `prototype`, `grilling`, `task`, `draft`, `revise` (see [Ticket Types](#ticket-types)).
 
 A session **claims** a ticket by assigning it to the dev driving the map, **first**, before any work, so concurrent sessions skip it. That assignee _is_ the claim: an open, unassigned ticket is unclaimed.
 
@@ -163,7 +163,7 @@ User invokes with a loose idea.
 
 1. **Name the destination.** Run a `/grilling` and `/domain-modeling` session to pin down what this map is finding its way to — the spec, decision, or change. The destination fixes the scope, so it's settled first.
 2. **Map the frontier.** Grill again, **breadth-first** this time: fan out across the whole space rather than deep on any one thread, surfacing the open decisions and the first steps takeable now. **If this surfaces no fog** — the way to the destination is already clear, the whole journey small enough for one session — you don't need a map. Stop and ask the user how they'd like to proceed.
-3. **Create the map** (label `wayfinder:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into **Not yet specified** — and **instantiate every `##` section the domain skill named in `## Notes` declares.** A map missing a section its domain skill reads is a **charting defect**, not a drafting one. Leave a declared section empty rather than omitting it: empty is a state a reader can announce, absent is not.
+3. **Create the map** (label `charting:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into **Not yet specified** — and **instantiate every `##` section the domain skill named in `## Notes` declares.** A map missing a section its domain skill reads is a **charting defect**, not a drafting one. Leave a declared section empty rather than omitting it: empty is a state a reader can announce, absent is not.
 4. **Create the tickets you can specify now** as child issues of the map — then wire blocking edges in a **second pass** (issues need ids before they can reference each other). Wiring sorts them into the frontier and the blocked; everything you can't yet specify stays in the fog — the **Not yet specified** section.
 5. Stop — charting the map is one session's work; do not also resolve tickets.
 

@@ -3,7 +3,7 @@
 A `SKILL.md` carries two kinds of `##` line that look identical: its own
 headings, and the headings *inside* a fenced template it ships for someone else
 to copy. Anything that tells them apart by string search gets the wrong one —
-`## Out of scope` appears in `wayfinder`'s map-body template ninety lines before
+`## Out of scope` appears in `charting`'s map-body template ninety lines before
 the section of that name. So every helper here masks fenced blocks first.
 
 It lives outside both test modules because the alternative is the defect the

@@ -1,13 +1,13 @@
 # The three map sections — `## Style`, `## Spine`, `## Skeleton`
 
-A wayfinder map is domain-agnostic: it names no academic-writing section and owns no template for
+A charting map is domain-agnostic: it names no academic-writing section and owns no template for
 one. What it owns is the **requirement** that a map instantiates every `##` section the domain
 skill its `## Notes` names declares. **This skill is that domain skill for academic writing**, and
 these are the three sections it declares. It ships all three together because it is the only unit
 that reads all three — the style stanza at session start, the ladder as the rung it is drafting
 against, the skeleton as the tree it writes anchors into.
 
-> **The template lives with its reader.** `wayfinder` names no domain section; `write-paper` ships
+> **The template lives with its reader.** `charting` names no domain section; `write-paper` ships
 > the three map-section templates; `render-paper` documents the two file formats.
 
 **A map missing a section this skill reads is a charting defect, not a drafting one.** Leave a
@@ -74,7 +74,7 @@ and every draft resolution would be editing the same block concurrently. The lad
 superseded actuals beside current ones forces every downstream drafter to work out which line is
 live.
 
-No skill owns `spine.md`. A wayfinder planning ticket creates it as its linked asset; each `draft`
+No skill owns `spine.md`. A charting planning ticket creates it as its linked asset; each `draft`
 resolution updates its own drafted actual; a rung itself is amended by a `task` ticket.
 
 ## `## Skeleton`

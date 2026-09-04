@@ -90,11 +90,11 @@ find.
 | there is no `CLEAN` verdict and no single-word verdict at all | **test** — every occurrence of the token in all five files is asserted to be a statement denying it |
 | the Tier 4 diagnostics carry no threshold | **structural** — they have no bucket in the exit code, so a bar attached to one could not do anything |
 
-### `wayfinder`
+### `charting`
 
 | rule | mechanism |
 |---|---|
-| the map records decisions, never recomputable state | **test** — `test_wayfinder_map.py`, including the outright ban on asserting a document property |
+| the map records decisions, never recomputable state | **test** — `test_charting_map.py`, including the outright ban on asserting a document property |
 | charting instantiates every declared section | **test** — same module |
 | `draft` and `revise` are keyed by unit, one line each | **test** — same module |
 | a `revise` names no keep-list | **deletion**, replaced by a mechanism — the supersession diff, reconstructed from the recorded commit ref |
@@ -105,7 +105,7 @@ find.
 | a `draft` closes on zero gate FAILs, with every finding fixed, written back, or dispositioned — silence being none of the three | **gate row** for the FAIL half; **test** for the three dispositions, which this file and `review-paper` both state |
 | the checkpoint reviews the render and never the annotated source | **test** — the rule is restated in three files, and all three are asserted to carry it |
 
-The last two are the duplications `wayfinder` was always going to carry: a ticket type has to state
+The last two are the duplications `charting` was always going to carry: a ticket type has to state
 its own closing condition, and a skill may not read another skill's directory. The third of that set
 is the abolished `CLEAN` verdict, asserted over all five files.
 
@@ -124,9 +124,9 @@ already asserted equal. The pair inside `write-paper` was not, and now is.
 
 **`HOLE / SLOT / SILENT` is one vocabulary, and two files name fewer than three.** A file that
 names two of the three leaves a session to guess what the third does. `review-paper` names `SILENT`
-alone and `wayfinder` names none — both correct, and for a stated reason: `SILENT` is the only class
+alone and `charting` names none — both correct, and for a stated reason: `SILENT` is the only class
 a review may create, so naming the others would describe an authority it does not have, and
-`wayfinder` plans without ever touching a source. That reasoning was nowhere, so the exemption was
+`charting` plans without ever touching a source. That reasoning was nowhere, so the exemption was
 indistinguishable from an omission. It is now asserted as an exemption — the two names, the one
 class, and the boundary sentence that licenses it — the same shape the *slot* exemption already
 had.
@@ -152,7 +152,7 @@ reads back. What is guarded is that the instruction stays on the page, and that 
 would be restated into does not exist: there is no `CLEAN` and no single-word verdict, both
 asserted. **Accepted: the residue is the report itself, and it is unreachable by construction.**
 
-**`wayfinder`: refer to every ticket by name, and never resolve more than one ticket per session.**
+**`charting`: refer to every ticket by name, and never resolve more than one ticket per session.**
 Both govern narration and session conduct rather than an artifact, so no mechanism is possible —
 there is nothing on disk to check. Both predate this rework and neither is touched by it.
 **Accepted, and out of scope for this effort.**
@@ -176,11 +176,11 @@ wrong reason, satisfied by `write-paper`'s unrelated `## Style`-key collision. *
 glossary qualifies every use rather than the first, which is weaker in placement and stronger in
 coverage.**
 
-**`wayfinder` uses *slot* in a third sense.** The settled vocabulary names two — a section position
+**`charting` uses *slot* in a third sense.** The settled vocabulary names two — a section position
 in the heading tree, and `SLOT:` in an annotation brace marking a venue back-matter field — and
-requires any passage where both could apply to say which is meant. `wayfinder` carries no
+requires any passage where both could apply to say which is meant. `charting` carries no
 annotation brace, so the deliberate collision cannot bite there; the contract check asserts exactly
-that, and asserts the qualification in the three files where it can. But `wayfinder` also writes
+that, and asserts the qualification in the three files where it can. But `charting` also writes
 that a revision's index line "takes the original's slot", which is a line's position in the map
 index and neither settled sense. **Accepted: the map index is not a heading tree and carries no
 braces, so neither settled sense is reachable in that passage, and the phrase is ordinary English

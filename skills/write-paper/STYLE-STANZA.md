@@ -58,7 +58,7 @@ threshold is the skill default, `0`.
 
 **Three readers, two contributors.** `write-paper` reads every key; `review-paper` reads the Tier 3
 preferences and `em-dash-threshold`; `assemble-paper` reads **`terms` only**, for term drift.
-`wayfinder` owns the `## Style` section but names no key, being domain-agnostic.
+`charting` owns the `## Style` section but names no key, being domain-agnostic.
 
 ## Composition — an effort states deltas, and inherits the rest
 
@@ -178,7 +178,7 @@ the user-level file also absent.
 - **The session says so in one line**, and offers to create the file from the exemplar above. Saying
   nothing is what would make a cold-start unit silently generic.
 
-Under `wayfinder`'s own template `## Style` is omitted when an effort has **no drafting tickets**, so
+Under `charting`'s own template `## Style` is omitted when an effort has **no drafting tickets**, so
 its absence there means *"not a drafting effort"* and never *"no preferences"*.
 
 ## Naming an invariant as a key — refuse before drafting
