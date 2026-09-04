@@ -32,6 +32,19 @@ STYLE_KEYS = (
 )
 
 
+def collapsed(text):
+    """The text as one line, every run of whitespace collapsed to one space.
+
+    Two things need it. An assertion reads as prose rather than depending on
+    where the source wrapped its lines; and a phrase asserted *absent* is
+    otherwise absent for the wrong reason — a deleted exemplar re-introduced
+    across a line break is the same sentence to a reader and a different string
+    to `in`, so a contract check that skipped this step would pass on a file
+    that had put it back.
+    """
+    return re.sub(r"\s+", " ", text)
+
+
 def without_fences(text):
     """The text with every fenced block blanked, offsets preserved.
 

@@ -20,6 +20,8 @@ import re
 
 import pytest
 
+from shipped_text import collapsed
+
 CASE = "figures"
 
 # The roster half of the hard-error row `#2` opened for the slot half. One row
@@ -41,10 +43,10 @@ def rewrite(paper, old, new):
     path.write_text(text.replace(old, new))
 
 
-def flat(text):
-    """`text` with every run of whitespace collapsed, so an assertion reads as
-    prose rather than depending on where the source wrapped its lines."""
-    return re.sub(r"\s+", " ", text)
+# `text` with every run of whitespace collapsed, so an assertion reads as prose
+# rather than depending on where the source wrapped its lines. Its one home is
+# `shipped_text.py`, which the contract check reads it from too.
+flat = collapsed
 
 
 def row(report, name):

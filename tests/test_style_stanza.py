@@ -142,13 +142,9 @@ class TestNoHouseStyleShips:
 
         assert "never a default" in example or "not a default" in example
 
-    def test_the_skill_file_carries_no_filled_key(self):
-        """The block that shipped a voice was deleted, not relocated."""
-        filled = [
-            key for key, value in key_lines(SKILL.read_text()) if value != ""
-        ]
-
-        assert filled == []
+    # The no-filled-key guard over a `SKILL.md` moved to
+    # `test_skill_contract.py`, which runs it over all five rather than this
+    # one. That assertion strictly contains the one that stood here.
 
 
 class TestTheKeySetIsClosed:

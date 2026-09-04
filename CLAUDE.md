@@ -14,6 +14,11 @@ partial install would leave it calling a file that is not there.
 directory, so nothing in the test tree ships to an installer. The runtime is Python 3 and the
 standard library; `pytest` is a test-only dependency.
 
+Every rule a `SKILL.md` states is either a mechanism or a deletion; a rule that is neither is not
+finished. `tests/test_skill_contract.py` holds the mechanically decidable half of that over all
+five skill files, and [`docs/mechanism-sweep.md`](docs/mechanism-sweep.md) records the judgement
+half — every rule, what makes it bite, and the residue that nothing does.
+
 ## Agent skills
 
 ### Issue tracker
