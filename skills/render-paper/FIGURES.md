@@ -31,7 +31,7 @@ contains it**: it fixes that figure's number, and it satisfies that figure's ros
 
 | class | resolved by |
 |---|---|
-| figures, tables, supplementary files | **first-mention order** in the assembled document |
+| figures, tables, Extended Data figures and tables, supplementary files | **first-mention order** in the assembled document |
 | **panels** | **the legend's declaration order** — *not* first mention |
 
 **The two rules are not unified, and the reason is physical.** A figure *number* appears nowhere but
@@ -41,7 +41,11 @@ and a render can renumber prose but cannot repaint a figure. The legend declares
 composition, so its enumeration order *is* the layout order.
 
 Each **kind** numbers in its own sequence, because a document numbers its figures and its tables
-independently.
+independently. A venue with an **Extended Data** tier — Nature-family journals — numbers its
+Extended Data figures and its Extended Data tables apart from each other, from the main items and
+from the supplementary ones, so those are two kinds of their own, `extended-figure` and
+`extended-table`, rather than a second use of `supplementary`. Sharing one kind across two tiers
+would interleave their numbers, which is wrong, not merely mislabelled.
 
 ### The rendered forms
 
@@ -49,12 +53,15 @@ independently.
 @fig:registration-accuracy   ->   fig. 1
 @fig:dapi-overlay            ->   fig. 1 (a)
 @fig:marker-schedule         ->   tbl. 1
+@fig:loco-robustness         ->   ext. fig. 1
+@fig:cohort-inventory        ->   ext. tbl. 1
 @fig:power-analysis          ->   suppl. 1
 ```
 
-These are pandoc-crossref's own spellings, taken rather than invented: the design rests on an
-existing tool already resolving name to number, and a second spelling of the same relation is how
-the two come apart. Which word a name takes comes from its **roster row**, never from the token — so
+The main and supplementary spellings are pandoc-crossref's own, taken rather than invented: the
+design rests on an existing tool already resolving name to number, and a second spelling of the same
+relation is how the two come apart. pandoc-crossref has no Extended Data tier, so those two are
+composed — `ext.` on the main kind's own word — and invent nothing beyond the tier. Which word a name takes comes from its **roster row**, never from the token — so
 promoting a figure to supplementary is a one-line roster edit at **zero prose edits**, which is the
 property names exist for. The venue's own typography is a downstream concern, exactly as the
 citation style is.

@@ -118,7 +118,18 @@ FIGURE_PREFIX = "fig:"
 # row**, never of the token: promoting a figure to supplementary is a one-line
 # roster edit at zero prose edits, and that is the property names exist for.
 # The venue's own typography is a downstream concern, as the citation style is.
-FIGURE_LABEL = {"figure": "fig.", "table": "tbl.", "supplementary": "suppl."}
+#
+# The two `extended-` kinds are a venue tier pandoc-crossref has no word for —
+# Extended Data, which Nature-family journals number apart from both the main
+# items and the Supplementary ones. They are spelled by composition, `ext.` on
+# the main kind's own word, so the relation between the tiers stays visible.
+FIGURE_LABEL = {
+    "figure": "fig.",
+    "table": "tbl.",
+    "extended-figure": "ext. fig.",
+    "extended-table": "ext. tbl.",
+    "supplementary": "suppl.",
+}
 ROSTER_KINDS = tuple(FIGURE_LABEL)
 
 # The legend's declaration block: one section, one entry per panel, and the

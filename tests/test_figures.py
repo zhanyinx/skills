@@ -802,6 +802,36 @@ def test_a_legend_with_no_panels_block_is_legal(render):
     assert "schedule (tbl. 1)" in flat(result.document)
 
 
+def test_the_extended_data_kinds_each_number_in_their_own_sequence(paper, run_in):
+    """A Nature-family venue numbers Extended Data figures and Extended Data
+    tables apart from each other, from the main items and from the
+    supplementary ones. `pipeline` was figure 2 and `antibody-panel` table 1;
+    moved to the Extended Data tier they open sequences of their own, and the
+    figure, table and supplementary sequences they leave are not renumbered
+    around them — the re-kind is the roster edit and nothing else."""
+    live = paper(CASE)
+    skeleton = live / "skeleton.md"
+    text = skeleton.read_text()
+    for old, new in [
+        ("| figure | pipeline |", "| extended-figure | pipeline |"),
+        ("| table | antibody-panel |", "| extended-table | antibody-panel |"),
+    ]:
+        assert old in text, old
+        text = text.replace(old, new)
+    skeleton.write_text(text)
+
+    result = run_in(live, "MANUSCRIPT.working.md", "--circulate")
+
+    assert result.exit_code == 0, result.report
+    document = flat(result.document)
+    assert "(ext. fig. 1 (a))" in document
+    assert "schedule (ext. tbl. 1)" in document
+    assert "(fig. 1)" in document
+    assert "(suppl. 1)" in document
+    assert "fig. 2" not in document
+    assert "tbl. 1" not in document.replace("ext. tbl. 1", "")
+
+
 def test_a_roster_row_with_no_legend_path_is_a_parse_error(paper, run_in):
     """The row names where the block will be. Leaving it empty would make *no
     panels ever* and *no panels yet* the same state."""
