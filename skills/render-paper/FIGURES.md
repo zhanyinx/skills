@@ -140,10 +140,6 @@ disagree with itself, which is the defect the single-implementation rule exists 
 who knows the brief's inventory zone still recognises the block on sight, because the entries are
 identical.
 
-**Legends are not yet emitted into the document.** The render reads a legend for its declaration
-block and nothing else. Emitting the legends in resolved-numeric order is a separate duty, and it
-needs somewhere in the skeleton to put them.
-
 **The block is authored at planning time**, by the legend's brief ticket, and **a `draft` session
 may not reorder it** — reordering re-letters the artwork, so it is an amendment that escalates to a
 `task` ticket. The reason it is planning-time is a real sequence: in the corpus this was calibrated
@@ -156,6 +152,64 @@ drafts.
 `## Panels` block — a figure or table with nothing to letter — both declare no panels. The block is
 required by the panel *references*, not by the renderer, which is the same reason a missing
 `references.bib` is not a parse error either.
+
+## Emitting the legends
+
+At whole-document granularity the render emits every roster row's legend **after the reference
+list**, under a `Legends` heading at the reference list's level, each under its row's rendered form
+as a heading: `Fig. 1`, `Ext. tbl. 1`, `Suppl. 1`. The heading is the in-text form with its first
+letter raised, so the caption and every reference to it spell one number one way.
+
+**The prose is the legend file less two things that are not reader-facing**: the leading `#` title,
+which names the file, and the `## Panels` block, which the namespace has already read. Both are
+blanked rather than cut, so every line a row reports is the legend's own. A legend with no
+`## Panels` block, a diagram with nothing to letter, emits the same way.
+
+**Order: by kind, then by number.** Tables, figures, Extended Data figures, Extended Data tables,
+supplementary. Within a kind, the number the row resolved to. The roster carries no order of its
+own, so this is the only order there is. It is the Nature-family order because that is the order
+such a venue numbers its citations in, and a legend's citations are numbered where the legend sits.
+
+**Citations number on from the body.** The legends resolve after every slot, in emission order, so a
+key first cited in a legend takes the next number after the body's, and a key the body already cited
+keeps its own. **There is one reference list**, built after the legends resolve and printed before
+them, and it holds every key either part cites.
+
+**Inside its own legend, a panel is its bare letter.** The caption already sits under the figure's
+number, so `@fig:dapi-overlay` in the `registration-accuracy` legend renders `a`, not `fig. 1 (a)`.
+A name from any other figure renders as it does in the body, and so does the figure's own name.
+
+```
+@fig:dapi-overlay shows the overlay     ->   a shows the overlay           (its own legend)
+on the stages of @fig:stage-graph       ->   on the stages of fig. 2 (a)   (another figure's)
+```
+
+**A legend not written yet is a gap**, on the same terms as an unfilled slot. A missing file, or a
+file with no prose outside its title and its block, renders `⟦HOLE: the legend of <name>⟧` under its
+heading, and the `unfilled skeleton slot` row names it, so it gates `--submit` and never blocks
+`--circulate`. The roster is the skeleton's own, so its legends are on its completion checklist.
+
+### What the gate reads in a legend
+
+A legend's prose is read by the **source's own parser**. Every refusal in
+[the parse errors](#the-parse-errors) holds in a legend, and so does every heading refusal. An
+anchor in a legend is a parse error too, because a legend's prose belongs to its roster row. The
+annotation channel works as it does in the body, and a legend's annotations land in the manifest at
+the legend's own path and line.
+
+| row | over the legends |
+|---|---|
+| `slot / roster integrity` | a name the document does not carry is a hard error. **A name written only in a legend does not satisfy its roster row**, because a legend describes its figure and does not discuss it |
+| `citation → bib entry` | read |
+| `annotations (gating)`, `bare holes`, `workflow phrases` | read |
+| `unfilled skeleton slot` | an unwritten legend, as above |
+| `em dashes` | counted, file-qualified wherever a legend contributes a spot |
+| `brief-to-prose overlap`, `single-sentence body paragraphs`, paragraph order | **not read.** Their order and finite-verb instruments fire forever on a caption, as the overlap section of `SKILL.md` records |
+| `adversative ratio`, `subject openings`, `sentence length`, `locality test` | **not read.** They measure the argument's prose, and a caption is not an argument |
+| the ladder rows | not read. A legend is no unit and carries no rung |
+
+**At `--section` granularity no legend is read**: a legend is a whole-document input, emitted after a
+reference list that a section render does not have.
 
 ## The parse errors
 

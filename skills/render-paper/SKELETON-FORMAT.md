@@ -97,7 +97,7 @@ order, and never in the source.
 |---|---|
 | `kind` | `figure`, `table`, `extended-figure`, `extended-table` or `supplementary`. It fixes which word the reference renders as and which sequence it numbers in — so promoting a figure to supplementary is this one edit, at zero prose edits |
 | `name` | the stable name prose refers to: lowercase letters, digits and hyphens. It describes the object's **content**; a name whose last hyphen-separated segment is a single letter is positional and a parse error |
-| `legend` | the path to the legend file, required and not empty. The **file** may be written later; the row names where its `## Panels` block will be |
+| `legend` | the path to the legend file, required and not empty. The **file** may be written later; the row names where its prose and its `## Panels` block will be, and until it is written the render emits a hole in its place |
 
 **Panels have no rows here, and that is what makes the roster stable under a figure split.** A
 panel's name is declared in its figure's legend, so parentage is carried by containment: a reference

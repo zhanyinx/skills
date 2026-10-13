@@ -132,6 +132,17 @@ FIGURE_LABEL = {
 }
 ROSTER_KINDS = tuple(FIGURE_LABEL)
 
+# The order the legends are emitted in, after the reference list: one block per
+# kind, and within a kind the resolved number. The roster carries no order of
+# its own, so this is the only order there is. It is the Nature-family order —
+# tables, then figure legends, then the Extended Data tier — because that is the
+# order such a venue numbers the citations in, and a legend's citations are
+# numbered where the legend is emitted.
+LEGEND_ORDER = ("table", "figure", "extended-figure", "extended-table", "supplementary")
+LEGENDS_HEADING = "Legends"
+# A legend's block is keyed apart from every slot: `:` is not in a slot id.
+LEGEND_SLOT = "legend:%s"
+
 # The legend's declaration block: one section, one entry per panel, and the
 # entry order is the lettering. The prefix is required on a declaration for the
 # same reason it is required on a reference — one namespace, one token class.
@@ -822,17 +833,30 @@ class Figures:
     def known(self, name):
         return self.figure_for(name) is not None
 
-    def resolve(self, name):
+    def number(self, name):
+        """The number a roster name has been handed, or `None` before its first
+        mention."""
+        return self._numbers.get(name)
+
+    def resolve(self, name, legend=None):
         """The rendered form of one reference, or `None` for a name this
         document does not carry.
 
         An unknown name is a hard error the gate has already reported by the
         time anything is emitted, so this leaves the token verbatim rather than
         holding a second opinion about the tier.
+
+        Inside `legend`'s own prose, a panel of that figure is its **bare
+        letter**: the caption already sits under the figure's number, so
+        repeating it on every panel names the figure the reader is reading. A
+        name from any other figure, and the figure's own name, render as they
+        do anywhere else.
         """
         figure = self.figure_for(name)
         if figure is None:
             return None
+        if figure == legend and name != figure:
+            return self.letter[name]
         kind = self.kind[figure]
         if figure not in self._numbers:
             # One sequence per kind: a document numbers its figures and its
@@ -927,6 +951,61 @@ def parse_legend(path):
             )
         names.append(name)
     return names
+
+
+class Legend:
+    """One roster row's legend prose: the block it was read into, or `None`
+    for a legend not written yet."""
+
+    def __init__(self, kind, name, path, block):
+        self.kind = kind
+        self.name = name
+        self.path = path
+        self.block = block
+
+    @property
+    def written(self):
+        return self.block is not None and bool(self.block.prose)
+
+
+def read_legends(root, skeleton):
+    """Every roster row's legend prose, read through the source's own parser
+    into one `Source` of its own.
+
+    The prose is the file less two things that are not reader-facing: its
+    leading `#` title, which names the file, and its `## Panels` block, which
+    the namespace has already read. Both are blanked rather than cut, so a
+    reported line is the legend's own line. Everything else is held to the
+    source grammar — the refusals, the annotation channel, the citations and
+    the residue lints — because a legend is prose the reader meets.
+    """
+    legends = []
+    source = Source()
+    for kind, name, legend in skeleton.roster:
+        path = root / legend
+        block = None
+        if path.exists():
+            block = Block(LEGEND_SLOT % name, path, 1)
+            _read_one_source(source, _legend_prose(path.read_text()), path, block)
+        legends.append(Legend(kind, name, path, block))
+    return legends, source
+
+
+def _legend_prose(text):
+    """A legend file with its title and its declaration block blanked.
+
+    The block runs from `## Panels` to the next `##` heading, which is where
+    `parse_legend` stops reading it too.
+    """
+    lines = text.split("\n")
+    first = next((index for index, line in enumerate(lines) if line.strip()), None)
+    in_panels = False
+    for index, line in enumerate(lines):
+        if line.startswith("## "):
+            in_panels = line[3:].strip() == PANEL_SECTION
+        if in_panels or (index == first and line.startswith("# ")):
+            lines[index] = _blanked(line)
+    return "\n".join(lines)
 
 
 def figure_name(key):
@@ -1303,10 +1382,25 @@ def scan_source(text, path):
     ]
 
 
-def _read_one_source(source, text, path):
+def _read_one_source(source, text, path, legend=None):
     """One source file, read into `source`: the annotation channel first, then
-    every comment stripped, then what is left split at the anchors."""
+    every comment stripped, then what is left split at the anchors.
+
+    A legend's prose is read by this same function, opened on the legend's own
+    block rather than on an anchor: a second reader of the same grammar is a
+    second set of refusals that can disagree with the first. A legend carries
+    no anchor, because its prose belongs to its roster row and nothing else.
+    """
     fenced, comments = scan_source(text, path)
+    if legend is not None:
+        for match, slot_id in comments:
+            if slot_id is not None:
+                raise ParseError(
+                    "%s:%d: `%s` is an anchor in a legend — a legend's prose "
+                    "belongs to its roster row, and the skeleton owns every slot"
+                    % (path.name, _line_of(text, match.start()), match.group(0).strip())
+                )
+        source.blocks.append(legend)
 
     # Braces are read off the text with every comment blanked to same-length
     # whitespace, so a reasoning comment's `{{label}}` join key is not itself
@@ -1325,7 +1419,7 @@ def _read_one_source(source, text, path):
     _refuse_reference_literals(bare, path, fenced)
 
     keyed = {}
-    current = None
+    current = legend
     pending = []
     cursor = 0
 
@@ -2086,7 +2180,7 @@ def slot_integrity_problems(skeleton, anchored, stray):
     return problems
 
 
-def roster_integrity_problems(skeleton, figures, referenced):
+def roster_integrity_problems(skeleton, figures, referenced, described=()):
     """The two ways a document's references and its roster misdescribe each
     other: a name in prose the document does not carry, and a roster name the
     prose never points at.
@@ -2104,16 +2198,23 @@ def roster_integrity_problems(skeleton, figures, referenced):
     problem at all: the roster carries no panel rows, so there is no roster
     name left unreferenced, and a figure may legitimately hold a panel the
     prose does not call out on its own.
+
+    `described` is the references written in the legends. A name there that
+    the document does not carry dangles exactly as one in the body does, but a
+    legend describes its figure rather than discussing it, so nothing written
+    only in a legend satisfies a roster row.
     """
     problems = []
     dangling = set()
     pointed_at = set()
     # One walk answers both halves: a reference either names nothing, or it
     # names the object it points at through containment.
-    for reference in referenced:
+    walked = [(one, True) for one in referenced] + [(one, False) for one in described]
+    for reference, discusses in walked:
         figure = figures.figure_for(figure_name(reference.key))
         if figure is not None:
-            pointed_at.add(figure)
+            if discusses:
+                pointed_at.add(figure)
         elif reference.key not in dangling:
             dangling.add(reference.key)
             problems.append("%s `@%s`" % (reference.where, reference.key))
@@ -2329,6 +2430,16 @@ def in_scope(paper):
     ]
 
 
+def legends_in_scope(paper):
+    """Every legend's block, paired with the prose a diagnostic may read.
+
+    Only the rows that read every reader-facing line take this: the rhythm
+    numbers, the overlap instrument and the paragraph counts measure the
+    argument's prose, and a caption is not an argument.
+    """
+    return [(block, scope_prose(block.raw)) for block in paper.legend_blocks]
+
+
 def paragraphs(scoped, first_line):
     """The blank-line-separated paragraphs of one block, each with its line."""
     found = []
@@ -2388,13 +2499,15 @@ def _line_in(block, scoped, offset):
     return block.raw_line + _line_of(scoped, offset) - 1
 
 
-def _locations(spots):
+def _locations(spots, qualified=False):
     """`(file, line)` pairs as the report prints them.
 
     Bare line numbers over one source file, and file-qualified over several —
     pre-promotion the sections are still separate files, where a bare `line 3`
-    could mean any of them. Each location prints once: the count already
-    carries the multiplicity, and a line named twice reads as two places.
+    could mean any of them — or wherever a legend contributes a spot, where a
+    bare line would read as the source's. Each location prints once: the count
+    already carries the multiplicity, and a line named twice reads as two
+    places.
     """
     if not spots:
         return ""
@@ -2403,7 +2516,7 @@ def _locations(spots):
     for spot in spots:
         if spot not in distinct:
             distinct.append(spot)
-    if len(names) == 1:
+    if len(names) == 1 and not qualified:
         lines = ", ".join(str(line) for _, line in distinct)
         return " (%s %s)" % ("line" if len(distinct) == 1 else "lines", lines)
     return " (%s)" % ", ".join("%s:%d" % spot for spot in distinct)
@@ -2834,13 +2947,16 @@ class Count(Verdict):
     the bar visible, never the count invisible.
     """
 
-    def __init__(self, count, threshold, spots):
+    def __init__(self, count, threshold, spots, qualified=False):
         Verdict.__init__(self, FAIL if count > threshold else PASS)
         self.count = count
         self.spots = list(spots)
+        self.qualified = qualified
 
     def render(self):
-        return "%s — %d%s" % (self.kind, self.count, _locations(self.spots))
+        return "%s — %d%s" % (
+            self.kind, self.count, _locations(self.spots, self.qualified)
+        )
 
 
 class Number(Verdict):
@@ -2879,7 +2995,10 @@ def check_slot_roster_integrity(paper):
     return Verdict.over(
         slot_integrity_problems(paper.skeleton, paper.blocks, paper.stray)
         + roster_integrity_problems(
-            paper.skeleton, paper.figures, paper.figure_references
+            paper.skeleton,
+            paper.figures,
+            paper.figure_references,
+            paper.legend_figure_references,
         )
     )
 
@@ -2987,6 +3106,11 @@ def check_unfilled_skeleton_slot(paper):
     problems = ["`%s`" % slot.id for slot in paper.slots if _owes_prose(paper, slot)]
     if paper.granularity == DOCUMENT and not paper.skeleton.title:
         problems.append("the document title")
+    # The roster is the skeleton's too, and a row's legend is emitted under the
+    # row's number: one with no prose is a gap on the same terms as a slot.
+    problems.extend(
+        "the legend of `%s`" % legend.name for legend in paper.legends if not legend.written
+    )
     return Verdict.over(problems)
 
 
@@ -3193,12 +3317,14 @@ def check_em_dashes(paper):
     gating submission is reserved to the annotation gate bit.
     """
     spots = []
-    for block, scoped in in_scope(paper):
+    in_legend = False
+    for block, scoped in in_scope(paper) + legends_in_scope(paper):
         offset = scoped.find(EM_DASH)
         while offset >= 0:
             spots.append((block.origin.name, _line_in(block, scoped, offset)))
+            in_legend = in_legend or block in paper.legend_blocks
             offset = scoped.find(EM_DASH, offset + 1)
-    return Count(len(spots), paper.em_dash_threshold, spots)
+    return Count(len(spots), paper.em_dash_threshold, spots, in_legend)
 
 
 def check_brief_overlap(paper):
@@ -3946,7 +4072,7 @@ class Paper:
 
     def __init__(
         self, skeleton, spine, briefs, bibliography, figures, source, granularity,
-        unit, em_dash_threshold,
+        unit, em_dash_threshold, legends=None,
     ):
         self.skeleton = skeleton
         self.spine = spine
@@ -3970,6 +4096,24 @@ class Paper:
         # loader that built this one, and a constructor that could build one
         # would be a loader that can recurse.
         self.superseded = None
+        # Every roster row's legend, at whole-document granularity only: a
+        # legend is a whole-document input, emitted after the reference list,
+        # so a section render has none in scope. Its findings join the body's
+        # in every row that reads them; its figure references are kept apart,
+        # because a legend describes its figure and does not discuss it, so a
+        # name written only in a legend satisfies no roster row.
+        self.legends = []
+        self.legend_blocks = []
+        self.legend_figure_references = []
+        if legends is not None:
+            self.legends, read = legends
+            self.legend_blocks = read.blocks
+            self.legend_figure_references = read.figure_references
+            self.annotations = self.annotations + read.annotations
+            self.citations = self.citations + read.citations
+            self.warnings = self.warnings + read.warnings
+            self.bare_holes = self.bare_holes + read.bare_holes
+            self.workflow_phrases = self.workflow_phrases + read.workflow_phrases
         self.slots = skeleton.subtree(unit) if unit is not None else skeleton.slots
         self.units = [unit] if unit is not None else skeleton.units
         self._prose = {}
@@ -4048,11 +4192,14 @@ def load_paper(source_path, root, granularity, named_unit, em_dash_threshold):
     source = parse_source(paths)
     briefs = load_briefs(root, skeleton)
     unit = None
+    legends = None
     if granularity == SECTION:
         unit = derive_unit(skeleton, source.blocks, named_unit)
+    else:
+        legends = read_legends(root, skeleton)
     return Paper(
         skeleton, spine, briefs, bibliography, figures, source, granularity, unit,
-        em_dash_threshold,
+        em_dash_threshold, legends,
     )
 
 
@@ -4090,11 +4237,49 @@ def render_document(paper):
             if paper.granularity == DOCUMENT:
                 prose = _resolve_references(prose, numbers, paper.figures)
             out.append("\n%s\n" % prose)
+    # The legends resolve before the reference list is built and are emitted
+    # after it: their citations are numbered after every body citation, in the
+    # order the legends appear, and the one list holds them all.
+    legends = _resolve_legends(paper, numbers)
     out.append(_reference_list(paper, numbers))
+    out.append(legends)
     return "".join(out)
 
 
-def _resolve_references(prose, numbers, figures):
+def _resolve_legends(paper, numbers):
+    """Every roster row's legend, under the number its row resolved to, in
+    `LEGEND_ORDER` and by number within a kind.
+
+    A legend not written yet comes out as a hole under its heading, exactly as
+    an unfilled slot does: a figure with no caption is a gap, never a silence.
+    """
+    if not paper.legends:
+        return ""
+    figures = paper.figures
+    level = _back_matter_level(paper)
+
+    def place(legend):
+        number = figures.number(legend.name)
+        return (LEGEND_ORDER.index(legend.kind), number is None, number or 0)
+
+    out = ["\n%s %s\n" % ("#" * level, LEGENDS_HEADING)]
+    for legend in sorted(paper.legends, key=place):
+        label = figures.resolve(legend.name)
+        out.append("\n%s %s\n" % ("#" * (level + 1), label[:1].upper() + label[1:]))
+        if legend.written:
+            prose = _resolve_references(legend.block.prose, numbers, figures, legend.name)
+        else:
+            prose = _hole("the legend of %s" % legend.name)
+        out.append("\n%s\n" % prose)
+    return "".join(out)
+
+
+def _back_matter_level(paper):
+    """The level the reference list and the legends sit at: the top units'."""
+    return min(unit.level for unit in paper.skeleton.units) if paper.skeleton.units else 2
+
+
+def _resolve_references(prose, numbers, figures, legend=None):
     """Every reference token in one slot's prose, replaced by what it resolves
     to — a citation by its number, a figure or panel by its rendered form.
 
@@ -4136,7 +4321,7 @@ def _resolve_references(prose, numbers, figures):
         for key in REFERENCE.findall(token):
             if key.startswith(FIGURE_PREFIX):
                 every_piece_a_citation = False
-                pieces.append(figures.resolve(figure_name(key)) or "@%s" % key)
+                pieces.append(figures.resolve(figure_name(key), legend) or "@%s" % key)
             else:
                 pieces.append(str(numbers.setdefault(key, len(numbers) + 1)))
         if match.group("bare"):
@@ -4164,8 +4349,7 @@ def _reference_list(paper, numbers):
     """
     if not numbers:
         return ""
-    level = min(unit.level for unit in paper.skeleton.units) if paper.skeleton.units else 2
-    lines = ["\n%s References\n\n" % ("#" * level)]
+    lines = ["\n%s References\n\n" % ("#" * _back_matter_level(paper))]
     for key, number in sorted(numbers.items(), key=lambda item: item[1]):
         lines.append("%s\n" % format_reference(number, key, paper.bibliography.entry(key)))
     return "".join(lines)
