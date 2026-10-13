@@ -777,7 +777,9 @@ def test_a_legend_may_declare_more_panels_than_the_alphabet_holds(paper, run_in)
         "@fig:stage-%02d      stage %d of the pipeline." % (number, number)
         for number in range(1, 28)
     )
-    path.write_text("# Legend — pipeline\n\n## Panels\n\n%s\n" % declared)
+    path.write_text(
+        "# Legend — pipeline\n\nTwenty-seven stages.\n\n## Panels\n\n%s\n" % declared
+    )
     rewrite(live, "@fig:stage-graph", "@fig:stage-27")
 
     result = run_in(live, "MANUSCRIPT.working.md", "--circulate")
@@ -786,13 +788,21 @@ def test_a_legend_may_declare_more_panels_than_the_alphabet_holds(paper, run_in)
     assert "committed configuration (fig. 2 (aa))" in flat(result.document)
 
 
-def test_a_legend_file_that_does_not_exist_yet_is_legal(render):
+def test_a_legend_file_that_does_not_exist_yet_is_legal(paper, run_in):
     """`power-analysis` has a roster row and no file. Legends are drafted after
     the body sections that reference their panels, so a missing legend declares
-    no panels rather than refusing the render."""
-    result = render(CASE, "MANUSCRIPT.working.md", "--check")
+    no panels rather than refusing the render — it is a gap, and gates only the
+    submit question, exactly as an unfilled slot does."""
+    live = paper(CASE)
+    legend(live, "power-analysis").unlink()
 
-    assert result.exit_code == 0, result.report
+    result = run_in(live, "MANUSCRIPT.working.md", "--circulate")
+
+    assert result.exit_code == 1, result.report
+    assert row(result.report, "unfilled skeleton slot") == (
+        "FAIL — 1 (the legend of `power-analysis`)"
+    )
+    assert "### Suppl. 1 ⟦HOLE: the legend of power-analysis⟧" in flat(result.document)
 
 
 def test_a_legend_with_no_panels_block_is_legal(render):
@@ -823,7 +833,7 @@ def test_the_extended_data_kinds_each_number_in_their_own_sequence(paper, run_in
     result = run_in(live, "MANUSCRIPT.working.md", "--circulate")
 
     assert result.exit_code == 0, result.report
-    document = flat(result.document)
+    document = flat(result.document.split("## Legends")[0])
     assert "(ext. fig. 1 (a))" in document
     assert "schedule (ext. tbl. 1)" in document
     assert "(fig. 1)" in document

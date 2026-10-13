@@ -32,7 +32,7 @@ The sweep was run over `origin/main` at `4be8288`, after tickets #13–#19 lande
 Every rule this skill states is a check it runs, which is the point of the unit: it is the pipeline's
 only mechanism-holder, and the other four invoke it rather than restating it. The fifteen gating
 rows and eight reported rows are specified in `SKILL.md` and asserted in `tests/test_render_paper.py`,
-`test_annotations.py`, `test_citations.py`, `test_figures.py`, `test_residue.py`,
+`test_annotations.py`, `test_citations.py`, `test_figures.py`, `test_legends.py`, `test_residue.py`,
 `test_supersession.py` and `test_worked_example.py`. Its file-format rules are enforced by being the
 only parser of the formats.
 

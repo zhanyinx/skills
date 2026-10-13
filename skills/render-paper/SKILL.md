@@ -22,8 +22,9 @@ All five are declared inputs at the paper root, beside the source:
 - [`spine.md`](SPINE-FORMAT.md) — the claim ladder: the central claim, and one rung per unit.
 - `briefs/<unit>.md` — one brief per unit, read by the overlap instrument.
 - `references.bib` — the author's reference library. See [the citation surface](CITATIONS.md).
-- each roster row's **legend file**, at the path that row declares, for the `## Panels` block that
-  fixes the panel names and their letters. See [figures and panels](FIGURES.md).
+- each roster row's **legend file**, at the path that row declares: its `## Panels` block fixes the
+  panel names and their letters, and its prose is emitted after the reference list at whole-document
+  granularity. See [figures and panels](FIGURES.md).
 
 `render-paper` is the only parser of the first two, which is why it documents their formats. **No
 skill owns either file.** A planning ticket creates each; a drafting session may amend its own slot
@@ -124,7 +125,7 @@ The tier answers one question: **would the render emit something false?**
   in the document points at, a unit and its rung not pairing 1:1, an originating unit bearing
   children, a citation key with no bibliography entry.
 - **Submit-gating** iff the render is faithful but the work is unfinished: an open annotation
-  carrying the gate bit, an unfilled skeleton slot, an unfilled document title, a debt the ladder
+  carrying the gate bit, an unfilled skeleton slot or roster legend, an unfilled document title, a debt the ladder
   never closes, a debt closed before it is opened, a bare hole left in reader-facing prose, or
   author workflow state written as a sentence the reader will read. The last of those is the **one
   mode-dependent row in the gate** — it fails `--submit` and `--check` and merely `WARN`s under
@@ -598,6 +599,11 @@ injection, one level down.
    [figures and panels](FIGURES.md).
 8. **Parse the legend declaration blocks.** A legend is the first draft artifact with machine-read
    structure: its `## Panels` block fixes the panel names and, by its entry order, their letters.
+9. **Emit the legends.** At whole-document granularity, after the reference list: by kind, then by
+   resolved number, each under its row's rendered form. Their citations number on from the body's
+   into the one list, a figure's own panels render as bare letters in its legend, and the prose is
+   held to the source grammar and gated in the rows that read every reader-facing line. See
+   [emitting the legends](FIGURES.md#emitting-the-legends).
 
 ## What it must not do
 

@@ -35,3 +35,22 @@ Registration proceeds pairwise against the DAPI channel, which every round share
 Accuracy is sufficient for per-arm comparison, which is what the drift left open
 (fig. 1), and the arms carry the power the comparison needs
 (suppl. 1).
+
+## Legends
+
+### Tbl. 1
+
+Marker pairs by round, with the clone and the dilution for each.
+
+### Fig. 1
+
+Registration holds every round in one frame, and the per-arm agreement is what the accuracy claim
+rests on.
+
+### Fig. 2
+
+Five stages, each reproducible from the committed configuration.
+
+### Suppl. 1
+
+Power for each per-arm comparison at the planned sample size.
